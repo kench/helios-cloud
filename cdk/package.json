@@ -1,24 +1,59 @@
 {
-  "name": "cdk",
+  "name": "helios-cloud-cdk",
   "version": "0.1.0",
+  "description": "CDK app for the Helios cloud resources",
+  "private": true,
+  "license": "CC0-1.0",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "build": "tsc",
-    "watch": "tsc -w",
-    "test": "jest",
+    "lint": "gts lint",
+    "fix": "gts fix",
+    "test": "jest --coverage",
+    "synth": "cdk synth",
     "cdk": "cdk"
-  },
-  "devDependencies": {
-    "@swc/core": "^1.15.0",
-    "@swc/jest": "^0.2.39",
-    "@types/jest": "^30",
-    "@types/node": "^24.10.1",
-    "jest": "^30",
-    "aws-cdk": "2.1149.0",
-    "tsx": "^4.23.0",
-    "typescript": "~7.0.2"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.277.0",
-    "constructs": "^10.5.0"
+    "constructs": "^10.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.6",
+    "aws-cdk": "^2.1149.0",
+    "gts": "^7.0.0",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.15",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/test"
+    ],
+    "testMatch": [
+      "**/*_test.ts"
+    ],
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "setupFilesAfterEnv": [
+      "aws-cdk-lib/testhelpers/jest-autoclean"
+    ],
+    "collectCoverageFrom": [
+      "lib/**/*.ts"
+    ],
+    "coverageReporters": [
+      "text",
+      "lcov"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 90
+      }
+    }
   }
 }
