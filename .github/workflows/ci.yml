@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: cdk
+
+jobs:
+  conventional-commits:
+    name: Conventional Commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The title becomes the commit message on main for squash merges. For merge
+      # and rebase merges the PR's own commits land on main, so they're checked too.
+      - name: Check PR title and commit subjects
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          echo "PR title:"
+          printf '%s\n' "$PR_TITLE" | sh .github/scripts/check-conventional-commit.sh
+          echo
+          echo "Commits:"
+          git log --no-merges --format=%s "$BASE_SHA..$HEAD_SHA" \
+            | sh .github/scripts/check-conventional-commit.sh
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: cdk/.nvmrc
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # gts: Google's TypeScript style (HLD section 12).
+      - name: Check style
+        run: npm run lint
+
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: cdk/.nvmrc
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run build
+
+  test:
+    name: Test and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: cdk/.nvmrc
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails below 90% line coverage (coverageThreshold in package.json).
+      - name: Test with coverage
+        run: npm test
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: cdk/coverage/
+          if-no-files-found: ignore
+
+  synth:
+    name: Synth
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: cdk/.nvmrc
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Synthesizes the CloudFormation template without AWS credentials. Nothing is
+      # deployed from CI yet.
+      - name: Synthesize
+        run: npx cdk synth --quiet
+
+      - name: Upload template
+        uses: actions/upload-artifact@v7
+        with:
+          name: cdk.out
+          path: cdk/cdk.out/
