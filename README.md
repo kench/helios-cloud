@@ -27,6 +27,16 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   (10 requests a second, bursts of 20). The stack output `BootstrapUrl` is the value for Helios's
   `bootstrap.url`. The device routes are open; the admin routes (`/v1/admin/devices…`) need a
   SigV4 signature, and `helios-provisioning` may call `RegisterDevice` and `GetDevice` only.
+- `AptRepository`: the public APT repository the Debian devices (relay and transcoder) install
+  Helios from. A private, versioned S3 bucket in the account-regional namespace
+  (`helios-apt-<account>-<region>-an`; replaced versions kept 30 days) behind a CloudFront
+  distribution with origin access control, on its default domain over HTTPS (output
+  `AptRepositoryUrl`). The helios repo's release workflow, run for a `v*` tag, assumes
+  `helios-apt-publisher` through GitHub's OIDC provider (immutable subject
+  `repo:kench@34564/helios@1464316682:ref:refs/tags/v*`). It may only read and write `pool/`,
+  `dists/` and `keys/` (no deletes) and invalidate the distribution. Packages are signed by that
+  workflow, so APT verifies them whatever the transport. The outputs `AptBucketName`,
+  `AptDistributionId` and `AptPublisherRoleArn` are for the workflow.
 
 ## Layout
 

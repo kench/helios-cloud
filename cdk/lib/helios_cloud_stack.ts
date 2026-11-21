@@ -2,7 +2,8 @@
  * @fileoverview The CloudFormation stack for the Helios cloud resources.
  *
  * Each group of resources is a nested stack: device identity, provisioning,
- * operating devices, and the bootstrap service (Bootstrap API, section 7).
+ * operating devices, the bootstrap service (Bootstrap API, section 7), and the
+ * APT repository for Helios releases.
  */
 
 import {CfnOutput, Stack} from 'aws-cdk-lib';
@@ -10,6 +11,7 @@ import type {StackProps} from 'aws-cdk-lib';
 import type {Code} from 'aws-cdk-lib/aws-lambda';
 import type {Construct} from 'constructs';
 
+import {AptRepositoryStack} from './apt_repository_stack';
 import {BootstrapStack} from './bootstrap_stack';
 import {
   DEVICE_ROLE_ALIAS_NAME,
@@ -50,6 +52,9 @@ export class HeliosCloudStack extends Stack {
   /** The bootstrap service. */
   readonly bootstrap: BootstrapStack;
 
+  /** The APT repository for Helios releases. */
+  readonly aptRepository: AptRepositoryStack;
+
   constructor(scope: Construct, id: string, props: HeliosCloudStackProps) {
     super(scope, id, {
       description: 'Helios cloud resources (github.com/kench/helios-cloud)',
@@ -69,6 +74,8 @@ export class HeliosCloudStack extends Stack {
       },
     });
 
+    this.aptRepository = new AptRepositoryStack(this, 'AptRepository');
+
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
 
@@ -82,6 +89,22 @@ export class HeliosCloudStack extends Stack {
     new CfnOutput(this, 'BootstrapUrl', {
       description: "Helios's bootstrap.url (the default execute-api domain)",
       value: this.bootstrap.bootstrapUrl,
+    });
+    new CfnOutput(this, 'AptRepositoryUrl', {
+      description: "The APT repository, for devices' sources",
+      value: this.aptRepository.repositoryUrl,
+    });
+    new CfnOutput(this, 'AptBucketName', {
+      description: 'The APT repository bucket, for the release workflow',
+      value: this.aptRepository.bucket.bucketName,
+    });
+    new CfnOutput(this, 'AptDistributionId', {
+      description: 'The APT repository distribution, for invalidations',
+      value: this.aptRepository.distribution.distributionId,
+    });
+    new CfnOutput(this, 'AptPublisherRoleArn', {
+      description: 'The role the helios release workflow assumes',
+      value: this.aptRepository.publisherRole.roleArn,
     });
   }
 }
