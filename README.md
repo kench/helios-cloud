@@ -1,8 +1,10 @@
 # helios-cloud
 
-The cloud side of Helios: a CDK app for the AWS resources Helios devices use, and later the
-bootstrap service's Lambdas. The design is in the Helios design pages in Notion: the High-Level
+The cloud side of Helios: a CDK app for the AWS resources Helios devices use, and the bootstrap
+service's Lambdas. The design is in the Helios design pages in Notion: the High-Level
 Design, LLD 2 (section 8, cloud infrastructure) and the Bootstrap API (section 7).
+Current status: *Helios - Project Status and Handoff*. `AGENTS.md` summarizes the stacks, checks,
+deploy rules and conventions for coding agents.
 
 The `HeliosCloud` stack holds one nested stack for each group of resources:
 
