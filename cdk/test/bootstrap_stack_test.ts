@@ -25,17 +25,30 @@ function tableKeyedBy(template: Template, key: string): string {
 }
 
 describe('BootstrapStack', () => {
-  it('keeps device records and the MAC index, with point-in-time recovery', () => {
+  it('keeps device records and the MAC index if the stack is deleted', () => {
     const template = synthesize();
     template.resourceCountIs('AWS::DynamoDB::GlobalTable', 3);
     for (const key of ['deviceId', 'mac']) {
-      const id = tableKeyedBy(template, key);
-      const table = template.toJSON()['Resources'][id];
+      const table = template.toJSON()['Resources'][tableKeyedBy(template, key)];
       expect(table['DeletionPolicy']).toBe('Retain');
       expect(table['UpdateReplacePolicy']).toBe('Retain');
-      expect(
-        table['Properties']['Replicas'][0]['PointInTimeRecoverySpecification'],
-      ).toEqual({PointInTimeRecoveryEnabled: true});
+    }
+    const challenges =
+      template.toJSON()['Resources'][tableKeyedBy(template, 'challengeId')];
+    expect(challenges['DeletionPolicy']).toBe('Delete');
+  });
+
+  it('uses the Standard class, on-demand billing and no point-in-time recovery', () => {
+    const tables = Object.values(
+      synthesize().findResources('AWS::DynamoDB::GlobalTable'),
+    );
+    expect(tables).toHaveLength(3);
+    for (const table of tables) {
+      expect(table['Properties']['BillingMode']).toBe('PAY_PER_REQUEST');
+      for (const replica of table['Properties']['Replicas']) {
+        expect(replica['TableClass']).toBe('STANDARD');
+        expect(replica['PointInTimeRecoverySpecification']).toBeUndefined();
+      }
     }
   });
 

@@ -16,7 +16,13 @@ import {
   LambdaIntegration,
   RestApi,
 } from 'aws-cdk-lib/aws-apigateway';
-import {AttributeType, ProjectionType, TableV2} from 'aws-cdk-lib/aws-dynamodb';
+import {
+  AttributeType,
+  Billing,
+  ProjectionType,
+  TableClass,
+  TableV2,
+} from 'aws-cdk-lib/aws-dynamodb';
 import {PolicyStatement} from 'aws-cdk-lib/aws-iam';
 import {Architecture, Function, Runtime} from 'aws-cdk-lib/aws-lambda';
 import type {Code} from 'aws-cdk-lib/aws-lambda';
@@ -36,6 +42,15 @@ export const THROTTLE_BURST = 20;
 /** The device API Lambda's handler (lambda/device-api). */
 export const DEVICE_API_HANDLER =
   'tv.kenley.helios.cloud.device.DeviceApiHandler::handleRequest';
+
+/**
+ * Every table: the Standard table class and on-demand billing. No
+ * point-in-time recovery.
+ */
+const TABLE_SETTINGS = {
+  tableClass: TableClass.STANDARD,
+  billing: Billing.onDemand(),
+};
 
 /** AWS settings sent to devices whose record has none of its own. */
 export interface DefaultAwsSettings {
@@ -81,9 +96,10 @@ export class BootstrapStack extends NestedStack {
       ...props,
     });
 
-    // Device records and the MAC index are the service's state: keep them,
-    // with point-in-time recovery, if the stack is ever deleted.
+    // Device records and the MAC index are the service's state: keep them if
+    // the stack is ever deleted.
     this.devices = new TableV2(this, 'Devices', {
+      ...TABLE_SETTINGS,
       partitionKey: {name: 'deviceId', type: AttributeType.STRING},
       globalSecondaryIndexes: [
         {
@@ -93,15 +109,15 @@ export class BootstrapStack extends NestedStack {
           projectionType: ProjectionType.KEYS_ONLY,
         },
       ],
-      pointInTimeRecoverySpecification: {pointInTimeRecoveryEnabled: true},
       removalPolicy: RemovalPolicy.RETAIN,
     });
     this.macIndex = new TableV2(this, 'MacIndex', {
+      ...TABLE_SETTINGS,
       partitionKey: {name: 'mac', type: AttributeType.STRING},
-      pointInTimeRecoverySpecification: {pointInTimeRecoveryEnabled: true},
       removalPolicy: RemovalPolicy.RETAIN,
     });
     this.challenges = new TableV2(this, 'Challenges', {
+      ...TABLE_SETTINGS,
       partitionKey: {name: 'challengeId', type: AttributeType.STRING},
       timeToLiveAttribute: 'expiresAt',
       removalPolicy: RemovalPolicy.DESTROY,
