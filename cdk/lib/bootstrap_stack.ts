@@ -1,7 +1,7 @@
 /**
  * @fileoverview The bootstrap service (Bootstrap API, section 7): the device
- * API Lambda behind an API Gateway REST API, and the DynamoDB tables for
- * device records, the MAC index and challenges.
+ * and admin API Lambdas behind an API Gateway REST API, and the DynamoDB
+ * tables for device records, the MAC index and challenges.
  *
  * Temporary simplifications (Bootstrap API, section 7): the API uses its
  * default execute-api domain (no custom domain or ACM certificate), PINs are
@@ -12,6 +12,7 @@
 import {Duration, NestedStack, RemovalPolicy} from 'aws-cdk-lib';
 import type {NestedStackProps} from 'aws-cdk-lib';
 import {
+  AuthorizationType,
   EndpointType,
   LambdaIntegration,
   RestApi,
@@ -23,7 +24,8 @@ import {
   TableClass,
   TableV2,
 } from 'aws-cdk-lib/aws-dynamodb';
-import {PolicyStatement} from 'aws-cdk-lib/aws-iam';
+import {Grant, PolicyStatement} from 'aws-cdk-lib/aws-iam';
+import type {IGrantable} from 'aws-cdk-lib/aws-iam';
 import {Architecture, Function, Runtime} from 'aws-cdk-lib/aws-lambda';
 import type {Code} from 'aws-cdk-lib/aws-lambda';
 import {LogGroup, RetentionDays} from 'aws-cdk-lib/aws-logs';
@@ -42,6 +44,16 @@ export const THROTTLE_BURST = 20;
 /** The device API Lambda's handler (lambda/device-api). */
 export const DEVICE_API_HANDLER =
   'tv.kenley.helios.cloud.device.DeviceApiHandler::handleRequest';
+
+/** The admin API Lambda's handler (lambda/admin-api). */
+export const ADMIN_API_HANDLER =
+  'tv.kenley.helios.cloud.admin.AdminApiHandler::handleRequest';
+
+/** The admin API routes provisioning needs: RegisterDevice and GetDevice. */
+export const PROVISIONING_ROUTES: ReadonlyArray<[string, string]> = [
+  ['POST', '/v1/admin/devices'],
+  ['GET', '/v1/admin/devices/*'],
+];
 
 /**
  * Every table: the Standard table class and on-demand billing. No
@@ -66,6 +78,8 @@ export interface DefaultAwsSettings {
 export interface BootstrapStackProps extends NestedStackProps {
   /** The device API's deployment package (`gradlew :device-api:lambdaZip`). */
   readonly deviceApiCode: Code;
+  /** The admin API's deployment package (`gradlew :admin-api:lambdaZip`). */
+  readonly adminApiCode: Code;
   /** AWS settings for devices whose record has none. */
   readonly defaultAws: DefaultAwsSettings;
 }
@@ -83,6 +97,9 @@ export class BootstrapStack extends NestedStack {
 
   /** The device API Lambda. */
   readonly deviceApi: Function;
+
+  /** The admin API Lambda. */
+  readonly adminApi: Function;
 
   /** The REST API. */
   readonly api: RestApi;
@@ -152,6 +169,27 @@ export class BootstrapStack extends NestedStack {
     });
     this.grantDeviceApi();
 
+    this.adminApi = new Function(this, 'AdminApi', {
+      description:
+        'Helios bootstrap service: admin API (RegisterDevice, GetDevice, ...)',
+      runtime: Runtime.JAVA_25,
+      architecture: Architecture.ARM_64,
+      handler: ADMIN_API_HANDLER,
+      code: props.adminApiCode,
+      memorySize: 1024,
+      timeout: Duration.seconds(30),
+      // Its own log group: the admin audit log, with the caller of each call.
+      logGroup: new LogGroup(this, 'AdminApiLogs', {
+        retention: RetentionDays.ONE_MONTH,
+      }),
+      environment: {
+        DEVICES_TABLE: this.devices.tableName,
+        MAC_INDEX_TABLE: this.macIndex.tableName,
+        JAVA_TOOL_OPTIONS: '-XX:+TieredCompilation -XX:TieredStopAtLevel=1',
+      },
+    });
+    this.grantAdminApi();
+
     this.api = new RestApi(this, 'Api', {
       restApiName: 'helios-bootstrap',
       description: 'Helios bootstrap service (Bootstrap API)',
@@ -177,7 +215,62 @@ export class BootstrapStack extends NestedStack {
     bootstrap.addMethod('POST', integration);
     bootstrap.addResource('challenge').addMethod('POST', integration);
 
+    // Admin routes need a SigV4 signature from an IAM principal allowed to
+    // call them (Bootstrap API, section 4).
+    const admin = new LambdaIntegration(this.adminApi, {
+      allowTestInvoke: false,
+    });
+    const iam = {authorizationType: AuthorizationType.IAM};
+    const devices = this.api.root
+      .getResource('v1')!
+      .addResource('admin')
+      .addResource('devices');
+    devices.addMethod('POST', admin, iam);
+    const device = devices.addResource('{deviceId}');
+    device.addMethod('GET', admin, iam);
+    device.addMethod('DELETE', admin, iam);
+    device.addResource('status').addMethod('PUT', admin, iam);
+
     this.bootstrapUrl = `${this.api.url}v1`;
+  }
+
+  /**
+   * Lets {@code grantee} call the admin routes provisioning needs
+   * (RegisterDevice and GetDevice), and no others.
+   */
+  grantProvisioning(grantee: IGrantable): Grant {
+    return Grant.addToPrincipal({
+      grantee,
+      actions: ['execute-api:Invoke'],
+      resourceArns: PROVISIONING_ROUTES.map(([method, path]) =>
+        this.api.arnForExecuteApi(method, path, BOOTSTRAP_STAGE),
+      ),
+    });
+  }
+
+  /** Only the DynamoDB calls AdminStore makes. */
+  private grantAdminApi(): void {
+    for (const statement of [
+      new PolicyStatement({
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+        ],
+        resources: [this.devices.tableArn],
+      }),
+      new PolicyStatement({
+        actions: ['dynamodb:Query'],
+        resources: [`${this.devices.tableArn}/index/thingName`],
+      }),
+      new PolicyStatement({
+        actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
+        resources: [this.macIndex.tableArn],
+      }),
+    ]) {
+      this.adminApi.addToRolePolicy(statement);
+    }
   }
 
   /** Only the DynamoDB calls DeviceStore makes. */

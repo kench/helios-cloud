@@ -29,6 +29,8 @@ export interface IotEndpoints {
 export interface HeliosCloudStackProps extends StackProps {
   /** The device API Lambda's deployment package. */
   readonly deviceApiCode: Code;
+  /** The admin API Lambda's deployment package. */
+  readonly adminApiCode: Code;
   /** The account's AWS IoT endpoints. */
   readonly iotEndpoints: IotEndpoints;
 }
@@ -54,12 +56,16 @@ export class HeliosCloudStack extends Stack {
     this.provisioning = new ProvisioningStack(this, 'Provisioning');
     this.bootstrap = new BootstrapStack(this, 'Bootstrap', {
       deviceApiCode: props.deviceApiCode,
+      adminApiCode: props.adminApiCode,
       defaultAws: {
         iotEndpoint: props.iotEndpoints.data,
         credentialsEndpoint: props.iotEndpoints.credentials,
         roleAlias: DEVICE_ROLE_ALIAS_NAME,
       },
     });
+
+    // Provisioning registers each device it creates.
+    this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
 
     new CfnOutput(this, 'BootstrapUrl', {
       description: "Helios's bootstrap.url (the default execute-api domain)",
