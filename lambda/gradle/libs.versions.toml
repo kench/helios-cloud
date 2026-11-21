@@ -1,0 +1,33 @@
+# Versions for the Helios Lambdas (HLD section 12, "Java style guide").
+[versions]
+aws-lambda-core = "1.4.1"
+aws-lambda-events = "3.16.1"
+aws-sdk = "2.57.9"
+checkstyle = "14.4.0"
+google-java-format = "2.0.0"
+jacoco = "0.8.16"
+junit = "6.1.3"
+# Smithy Java 1.8.0 is built with Smithy 1.74.0; the contract's traits are compatible.
+smithy = "1.74.0"
+smithy-java = "1.8.0"
+
+[libraries]
+aws-lambda-core = { module = "com.amazonaws:aws-lambda-java-core", version.ref = "aws-lambda-core" }
+aws-lambda-events = { module = "com.amazonaws:aws-lambda-java-events", version.ref = "aws-lambda-events" }
+aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
+aws-sdk-dynamodb = { module = "software.amazon.awssdk:dynamodb" }
+aws-sdk-url-connection-client = { module = "software.amazon.awssdk:url-connection-client" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+smithy-aws-traits = { module = "software.amazon.smithy:smithy-aws-traits", version.ref = "smithy" }
+smithy-java-codegen = { module = "software.amazon.smithy.java:codegen-plugin", version.ref = "smithy-java" }
+smithy-java-core = { module = "software.amazon.smithy.java:core", version.ref = "smithy-java" }
+smithy-java-framework-errors = { module = "software.amazon.smithy.java:framework-errors", version.ref = "smithy-java" }
+smithy-java-json = { module = "software.amazon.smithy.java:json-codec", version.ref = "smithy-java" }
+smithy-protocol-test-traits = { module = "software.amazon.smithy:smithy-protocol-test-traits", version.ref = "smithy" }
+smithy-validation-model = { module = "software.amazon.smithy:smithy-validation-model", version.ref = "smithy" }
+
+[plugins]
+smithy-base = { id = "software.amazon.smithy.gradle.smithy-base", version = "1.5.0" }
+spotless = { id = "com.diffplug.spotless", version = "8.9.0" }

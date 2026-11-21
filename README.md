@@ -20,6 +20,9 @@ The bootstrap service comes in a later change.
 ## Layout
 
 ```
+contract/             git submodule: helios-contract (the Smithy model), pinned to a release tag
+lambda/               the Lambdas (Java 25, Gradle)
+  model/                Java types generated from the contract with Smithy Java
 cdk/                  CDK app (TypeScript), generated with `cdk init app --language typescript`
   bin/helios_cloud.ts   entry point: the HeliosCloud stack in us-west-2
   lib/                  the stack and its nested stacks
@@ -66,6 +69,22 @@ repo:kench@34564/helios-cloud@1463717924:ref:refs/heads/main
 ```
 
 `gh api repos/kench/helios-cloud/actions/oidc/customization/sub` shows the prefix.
+
+### Java
+
+Needs a JDK 25 and the `contract` submodule (`git submodule update --init`, or clone with
+`--recurse-submodules`). Gradle 9.9.2 comes from the wrapper.
+
+```sh
+cd lambda
+./gradlew check         # Spotless, Checkstyle, tests, at least 90% line coverage
+./gradlew spotlessApply # apply google-java-format
+```
+
+`lambda/model` generates Java types for the Bootstrap API from the Smithy model in `contract/`
+with Smithy Java's type code generation (`smithy-build.json`). Its test reads every protocol test
+in the model and checks that each body round-trips through the generated types. Generated code
+is excluded from Checkstyle, Spotless and coverage.
 
 ## Standards
 
