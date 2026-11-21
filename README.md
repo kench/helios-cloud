@@ -52,8 +52,15 @@ gh run watch
 
 The job type-checks and tests, prints `cdk diff`, then runs `cdk deploy`. It signs in to AWS with
 GitHub's OIDC token as `GitHubActionsRole`, the role `Kenley/CDK` deploys with. That role's trust
-policy must allow this repository's `main` branch
-(`repo:kench/helios-cloud:ref:refs/heads/main`).
+policy must allow this repository's `main` branch. The repository uses GitHub's immutable OIDC
+subject, which has the owner and repository IDs instead of only their names, so the trust
+policy's `token.actions.githubusercontent.com:sub` value is:
+
+```
+repo:kench@34564/helios-cloud@1463717924:ref:refs/heads/main
+```
+
+`gh api repos/kench/helios-cloud/actions/oidc/customization/sub` shows the prefix.
 
 ## Standards
 
