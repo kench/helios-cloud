@@ -24,12 +24,25 @@ describe('HeliosCloudStack', () => {
       'AWS::CloudFormation::Stack',
       'AWS::CloudFormation::Stack',
       'AWS::CloudFormation::Stack',
+      'AWS::CloudFormation::Stack',
     ]);
   });
 
   it('outputs the bootstrap URL', () => {
     const outputs = synthesize().findOutputs('BootstrapUrl');
     expect(Object.keys(outputs)).toHaveLength(1);
+  });
+
+  it('outputs what the release workflow and devices need', () => {
+    const template = synthesize();
+    for (const name of [
+      'AptRepositoryUrl',
+      'AptBucketName',
+      'AptDistributionId',
+      'AptPublisherRoleArn',
+    ]) {
+      expect(Object.keys(template.findOutputs(name))).toHaveLength(1);
+    }
   });
 
   it('has a description', () => {
