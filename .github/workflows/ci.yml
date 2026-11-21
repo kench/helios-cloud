@@ -145,3 +145,40 @@ jobs:
         with:
           name: cdk.out
           path: cdk/cdk.out/
+
+  java:
+    name: Java build and coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lambda
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The helios-contract submodule: the Smithy model the types are generated from.
+          submodules: true
+
+      # Java 25 (HLD section 12), the JDK of the Lambda java25 runtime.
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Spotless (google-java-format), Checkstyle (google_checks.xml), the tests,
+      # and at least 90% line coverage of hand-written code (JaCoCo).
+      - name: Check
+        run: ./gradlew --no-daemon check
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: java-reports
+          path: |
+            lambda/*/build/reports/
+            lambda/*/build/test-results/

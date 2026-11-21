@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "sources": ["../../contract/model"],
+  "plugins": {
+    "java-codegen": {
+      "service": "tv.kenley.helios.contract#HeliosBootstrap",
+      "namespace": "tv.kenley.helios.cloud",
+      "modes": ["types"]
+    }
+  }
+}
