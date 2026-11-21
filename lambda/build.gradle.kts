@@ -21,6 +21,13 @@ subprojects {
         }
     }
 
+    // Byte-for-byte reproducible jars and zips, so an unchanged Lambda keeps
+    // the same CDK asset hash and isn't redeployed.
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+
     tasks.withType<JavaCompile>().configureEach {
         options.encoding = "UTF-8"
         options.release = 25
