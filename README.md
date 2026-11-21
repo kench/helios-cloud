@@ -20,7 +20,7 @@ cdk/                  CDK app (TypeScript), generated with `cdk init app --langu
   lib/                  the stack and its nested stacks
   test/                 Jest tests (*_test.ts) on the synthesized template
   AGENTS.md             notes for coding agents (from cdk init, adapted)
-.github/workflows/    CI
+.github/workflows/    CI (ci.yml) and the manual deploy (deploy.yml)
 ```
 
 ## Development
@@ -39,6 +39,21 @@ npx cdk synth   # synthesize the CloudFormation template into cdk.out/
 
 `npx cdk deploy` changes the real AWS account. Don't run it unless a change is meant to be
 deployed.
+
+## Deploying
+
+Deploys run from GitHub Actions (`.github/workflows/deploy.yml`), only when started by hand from
+`main`. Merging a PR doesn't deploy it.
+
+```sh
+gh workflow run deploy.yml --ref main
+gh run watch
+```
+
+The job type-checks and tests, prints `cdk diff`, then runs `cdk deploy`. It signs in to AWS with
+GitHub's OIDC token as `GitHubActionsRole`, the role `Kenley/CDK` deploys with. That role's trust
+policy must allow this repository's `main` branch
+(`repo:kench/helios-cloud:ref:refs/heads/main`).
 
 ## Standards
 
