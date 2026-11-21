@@ -8,19 +8,26 @@ plugins {
     alias(libs.plugins.smithy.base)
 }
 
+// The model's traits (restJson1, protocol tests, ValidationException). The Smithy plugin loads
+// the model from this project's own classpaths, but the generated code doesn't use these jars,
+// and smithy-validation-model drags in all of smithy-cli. A private configuration keeps them off
+// what other projects (and the Lambda package) get from this one.
+val smithyModels = configurations.create("smithyModels")
+configurations.compileClasspath { extendsFrom(smithyModels) }
+configurations.runtimeClasspath { extendsFrom(smithyModels) }
+configurations.testCompileClasspath { extendsFrom(smithyModels) }
+configurations.testRuntimeClasspath { extendsFrom(smithyModels) }
+
 dependencies {
     smithyBuild(libs.smithy.java.codegen)
-    // The model's traits: restJson1, protocol tests and ValidationException.
-    implementation(libs.smithy.aws.traits)
-    implementation(libs.smithy.protocol.test.traits)
-    implementation(libs.smithy.validation.model)
+    smithyModels(libs.smithy.aws.traits)
+    smithyModels(libs.smithy.protocol.test.traits)
+    smithyModels(libs.smithy.validation.model)
 
     api(libs.smithy.java.core)
     api(libs.smithy.java.json)
     api(libs.smithy.java.framework.errors)
 
-    // ContractBodiesTest reads the protocol tests from the model.
-    testImplementation(libs.smithy.protocol.test.traits)
 }
 
 tasks.test {

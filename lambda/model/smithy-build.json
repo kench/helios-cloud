@@ -1,11 +1,20 @@
 {
   "version": "1.0",
-  "sources": ["../../contract/model"],
+  "sources": [
+    "../../contract/model"
+  ],
   "plugins": {
     "java-codegen": {
       "service": "tv.kenley.helios.contract#HeliosBootstrap",
       "namespace": "tv.kenley.helios.cloud",
-      "modes": ["types"]
+      "modes": [
+        "types"
+      ],
+      "runtimeTraits": [
+        "smithy.api#httpError",
+        "smithy.api#httpHeader",
+        "smithy.api#httpPayload"
+      ]
     }
   }
 }
