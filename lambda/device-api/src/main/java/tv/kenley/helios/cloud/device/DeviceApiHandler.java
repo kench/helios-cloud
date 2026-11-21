@@ -4,13 +4,11 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Clock;
-import java.util.Base64;
-import java.util.Optional;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import tv.kenley.helios.cloud.common.LambdaEvents;
 
 /**
  * The Lambda entry point for the device API, behind an API Gateway REST API with Lambda proxy
@@ -36,29 +34,7 @@ public final class DeviceApiHandler
   @Override
   public APIGatewayProxyResponseEvent handleRequest(
       APIGatewayProxyRequestEvent event, Context context) {
-    String body = event.getBody() == null ? "" : event.getBody();
-    byte[] bytes =
-        Boolean.TRUE.equals(event.getIsBase64Encoded())
-            ? Base64.getDecoder().decode(body)
-            : body.getBytes(StandardCharsets.UTF_8);
-    String sourceIp =
-        Optional.ofNullable(event.getRequestContext())
-            .map(APIGatewayProxyRequestEvent.ProxyRequestContext::getIdentity)
-            .map(APIGatewayProxyRequestEvent.RequestIdentity::getSourceIp)
-            .orElse("unknown");
-    DeviceApi.Response response =
-        api.handle(
-            new DeviceApi.Request(
-                event.getHttpMethod(),
-                event.getPath(),
-                bytes,
-                sourceIp,
-                context.getAwsRequestId()));
-    return new APIGatewayProxyResponseEvent()
-        .withStatusCode(response.status())
-        .withHeaders(response.headers())
-        .withBody(response.body())
-        .withIsBase64Encoded(false);
+    return LambdaEvents.response(api.handle(LambdaEvents.request(event, context)));
   }
 
   private static DeviceApi fromEnvironment() {

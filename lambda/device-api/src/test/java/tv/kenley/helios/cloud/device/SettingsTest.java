@@ -49,9 +49,4 @@ final class SettingsTest {
     assertThrows(IllegalArgumentException.class, () -> Settings.from(noTable));
     assertThrows(IllegalArgumentException.class, () -> Settings.from(partial));
   }
-
-  @Test
-  void jsonEscapesStrings() {
-    assertEquals("\"a\\\"b\\\\c\\nd\\re\\tf\\u0001\"", Json.quote("a\"b\\c\nd\re\tf\u0001"));
-  }
 }

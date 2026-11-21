@@ -24,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
+import tv.kenley.helios.cloud.common.RestJson;
 import tv.kenley.helios.cloud.model.AnswerChallengeInput;
 import tv.kenley.helios.cloud.model.BootstrapInput;
 import tv.kenley.helios.cloud.model.BootstrapResult;
@@ -72,17 +73,17 @@ final class DeviceApiTest {
             Clock.fixed(Instant.parse("2026-11-21T03:00:00Z"), ZoneOffset.UTC));
   }
 
-  private DeviceApi.Response post(String path, String body) {
+  private RestJson.Response post(String path, String body) {
     return api.handle(
-        new DeviceApi.Request(
-            "POST", path, body.getBytes(StandardCharsets.UTF_8), "203.0.113.7", "request-1"));
+        new RestJson.Request(
+            "POST", path, body.getBytes(StandardCharsets.UTF_8), "203.0.113.7", "request-1", null));
   }
 
   private static ObjectNode json(String body) {
     return Node.parse(body).expectObjectNode();
   }
 
-  private static void assertCommonHeaders(DeviceApi.Response response) {
+  private static void assertCommonHeaders(RestJson.Response response) {
     assertEquals("application/json", response.headers().get("Content-Type"));
     assertEquals("no-store", response.headers().get("Cache-Control"));
   }
@@ -93,7 +94,7 @@ final class DeviceApiTest {
     when(service.bootstrap(input.capture(), any()))
         .thenReturn(BootstrapResult.builder().identity(IDENTITY).build());
 
-    DeviceApi.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
+    RestJson.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
 
     assertEquals(200, response.status());
     assertCommonHeaders(response);
@@ -136,7 +137,7 @@ final class DeviceApiTest {
                         .build())
                 .build());
 
-    DeviceApi.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
+    RestJson.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
 
     ObjectNode challenge = json(response.body()).expectObjectMember("challenge");
     assertEquals("AAECAw==", challenge.expectStringMember("nonce").getValue());
@@ -151,7 +152,7 @@ final class DeviceApiTest {
         ArgumentCaptor.forClass(AnswerChallengeInput.class);
     when(service.answerChallenge(input.capture(), any())).thenReturn(IDENTITY);
 
-    DeviceApi.Response response =
+    RestJson.Response response =
         post(
             DeviceApi.CHALLENGE_PATH,
             """
@@ -172,7 +173,7 @@ final class DeviceApiTest {
     when(service.bootstrap(any(), any()))
         .thenThrow(DeviceDisabled.builder().message("Device is disabled.").build());
 
-    DeviceApi.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
+    RestJson.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
 
     assertEquals(403, response.status());
     assertCommonHeaders(response);
@@ -184,7 +185,7 @@ final class DeviceApiTest {
 
   @Test
   void malformedJsonIsValidationError() {
-    DeviceApi.Response response = post(DeviceApi.BOOTSTRAP_PATH, "{not json");
+    RestJson.Response response = post(DeviceApi.BOOTSTRAP_PATH, "{not json");
 
     assertEquals(400, response.status());
     assertEquals("ValidationException", response.headers().get("X-Amzn-Errortype"));
@@ -195,7 +196,7 @@ final class DeviceApiTest {
 
   @Test
   void constraintsAreCheckedAgainstTheModel() {
-    DeviceApi.Response response =
+    RestJson.Response response =
         post(
             DeviceApi.BOOTSTRAP_PATH,
             """
@@ -225,10 +226,10 @@ final class DeviceApiTest {
 
   @Test
   void unknownRoutesAreNotFound() {
-    DeviceApi.Response response =
+    RestJson.Response response =
         api.handle(
-            new DeviceApi.Request(
-                "GET", DeviceApi.BOOTSTRAP_PATH, new byte[0], "203.0.113.7", "request-1"));
+            new RestJson.Request(
+                "GET", DeviceApi.BOOTSTRAP_PATH, new byte[0], "203.0.113.7", "request-1", null));
 
     assertEquals(404, response.status());
     assertCommonHeaders(response);
@@ -241,7 +242,7 @@ final class DeviceApiTest {
   void unexpectedFailuresAreInternalErrors() {
     when(service.bootstrap(any(), any())).thenThrow(new IllegalStateException("DynamoDB down"));
 
-    DeviceApi.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
+    RestJson.Response response = post(DeviceApi.BOOTSTRAP_PATH, MINIMAL);
 
     assertEquals(500, response.status());
     assertEquals("InternalError", response.headers().get("X-Amzn-Errortype"));

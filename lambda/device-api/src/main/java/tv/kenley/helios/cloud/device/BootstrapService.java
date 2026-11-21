@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import software.amazon.smithy.java.core.error.ModeledException;
+import tv.kenley.helios.cloud.common.Ulid;
 import tv.kenley.helios.cloud.model.Adapter;
 import tv.kenley.helios.cloud.model.AmbiguousDevice;
 import tv.kenley.helios.cloud.model.AnswerChallengeInput;
@@ -27,6 +28,7 @@ import tv.kenley.helios.cloud.model.ChallengeFailed;
 import tv.kenley.helios.cloud.model.ChallengeUnsupported;
 import tv.kenley.helios.cloud.model.DeviceDisabled;
 import tv.kenley.helios.cloud.model.DeviceIdentity;
+import tv.kenley.helios.cloud.model.LookupResult;
 import tv.kenley.helios.cloud.model.SignatureAlgorithm;
 import tv.kenley.helios.cloud.model.UnknownDevice;
 
@@ -103,7 +105,8 @@ final class BootstrapService {
           checkEnabled(device);
           if (!device.challengeRequired()) {
             return new Outcome<>(
-                BootstrapResult.builder().identity(identity(device)).build(), "identity");
+                BootstrapResult.builder().identity(identity(device)).build(),
+                LookupResult.IDENTITY_RETURNED);
           }
           if (!input.hasCapabilities()
               || !input.getCapabilities().contains(Capability.TOKEN_CHALLENGE)) {
@@ -117,7 +120,8 @@ final class BootstrapService {
           }
           audit.challenge();
           return new Outcome<>(
-              BootstrapResult.builder().challenge(issue(device, macs)).build(), "challenge");
+              BootstrapResult.builder().challenge(issue(device, macs)).build(),
+              LookupResult.CHALLENGE_ISSUED);
         });
   }
 
@@ -152,7 +156,7 @@ final class BootstrapService {
             throw failed("The signature doesn't verify.");
           }
           checkEnabled(device);
-          return new Outcome<>(identity(device), "identity");
+          return new Outcome<>(identity(device), LookupResult.IDENTITY_RETURNED);
         });
   }
 
@@ -198,18 +202,19 @@ final class BootstrapService {
       record(device, audit, details, outcome.result());
       return outcome.value();
     } catch (ModeledException e) {
-      record(device, audit, details, e.schema().id().getName());
+      lookupResult(e).ifPresent(result -> record(device, audit, details, result));
       throw e;
     }
   }
 
-  private void record(DeviceRecord device, AuditEntry audit, LookupDetails details, String result) {
+  private void record(
+      DeviceRecord device, AuditEntry audit, LookupDetails details, LookupResult result) {
     try {
       store.recordLookup(
           device.deviceId(),
           new LookupRecord(
               audit.time(),
-              result,
+              result.getValue(),
               audit.sourceIp(),
               details.heliosVersion(),
               details.hardwareModel()));
@@ -217,6 +222,18 @@ final class BootstrapService {
       // lastSeen is for operators; failing to write it mustn't fail the device.
       warnings.accept("couldn't record lastSeen for " + device.deviceId() + ": " + e);
     }
+  }
+
+  /** The lastSeen result for an error, if it's one the admin API reports (LookupResult). */
+  private static Optional<LookupResult> lookupResult(ModeledException e) {
+    return Optional.ofNullable(
+        switch (e) {
+          case ChallengeFailed f -> LookupResult.CHALLENGE_FAILED;
+          case ChallengeExpired x -> LookupResult.CHALLENGE_EXPIRED;
+          case ChallengeUnsupported u -> LookupResult.CHALLENGE_UNSUPPORTED;
+          case DeviceDisabled d -> LookupResult.DEVICE_DISABLED;
+          default -> null;
+        });
   }
 
   private static void checkEnabled(DeviceRecord device) {
@@ -247,7 +264,7 @@ final class BootstrapService {
     return ChallengeFailed.builder().message(message).build();
   }
 
-  private record Outcome<T>(T value, String result) {}
+  private record Outcome<T>(T value, LookupResult result) {}
 
   private record LookupDetails(Optional<String> heliosVersion, Optional<String> hardwareModel) {}
 }

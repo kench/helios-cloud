@@ -18,5 +18,11 @@ dependencyResolutionManagement {
 // Types generated from the Smithy model in ../contract (helios-contract).
 include("model")
 
+// Shared by the Lambdas: restJson1 over API Gateway, IDs, log lines, challenge keys.
+include("common")
+
 // The device API Lambda: Bootstrap and AnswerChallenge (Bootstrap API, section 3).
 include("device-api")
+
+// The admin API Lambda: device registration and management (Bootstrap API, section 4).
+include("admin-api")

@@ -162,7 +162,7 @@ final class BootstrapServiceTest {
     assertEquals("123456", identity.getPin());
     assertEquals("device-key", identity.getToken().getKeyLabel());
     assertEquals(DEFAULT_AWS, identity.getAws());
-    assertEquals("identity", lastResult());
+    assertEquals("identity_returned", lastResult());
     assertEquals(Optional.of("0.1.0"), lookup.getValue().heliosVersion());
     assertEquals("203.0.113.7", lookup.getValue().sourceIp());
     assertTrue(audit.toJson().contains("\"deviceId\":\"d-1\""), audit.toJson());
@@ -243,7 +243,7 @@ final class BootstrapServiceTest {
     registered(device(true, false), ETH);
 
     assertThrows(DeviceDisabled.class, () -> service.bootstrap(request(false, ETH), audit()));
-    assertEquals("DeviceDisabled", lastResult());
+    assertEquals("device_disabled", lastResult());
   }
 
   @Test
@@ -251,7 +251,7 @@ final class BootstrapServiceTest {
     registered(device(false, true), ETH);
 
     assertThrows(ChallengeUnsupported.class, () -> service.bootstrap(request(false, ETH), audit()));
-    assertEquals("ChallengeUnsupported", lastResult());
+    assertEquals("challenge_unsupported", lastResult());
   }
 
   @Test
@@ -292,7 +292,7 @@ final class BootstrapServiceTest {
     assertEquals(32, challenge.getNonce().remaining());
     assertEquals(
         Base64.getEncoder().encodeToString(bytes(challenge.getNonce())), stored.nonceBase64());
-    assertEquals("challenge", lastResult());
+    assertEquals("challenge_issued", lastResult());
     assertTrue(audit.toJson().contains("\"challenge\":true"), audit.toJson());
   }
 
@@ -331,7 +331,7 @@ final class BootstrapServiceTest {
     DeviceIdentity identity = service.answerChallenge(answer(sign(challenge), ETH), audit());
 
     assertEquals("123456", identity.getPin());
-    assertEquals("identity", lastResult());
+    assertEquals("identity_returned", lastResult());
   }
 
   @Test
@@ -362,7 +362,7 @@ final class BootstrapServiceTest {
     assertThrows(
         ChallengeFailed.class,
         () -> service.answerChallenge(answer(sign(challenge), ETH, WIFI), audit()));
-    assertEquals("ChallengeFailed", lastResult());
+    assertEquals("challenge_failed", lastResult());
   }
 
   @Test

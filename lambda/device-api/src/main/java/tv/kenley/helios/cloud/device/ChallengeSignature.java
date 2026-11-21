@@ -1,18 +1,11 @@
 package tv.kenley.helios.cloud.device;
 
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.AlgorithmParameters;
 import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.interfaces.ECPublicKey;
-import java.security.spec.ECGenParameterSpec;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
 import java.util.List;
+import tv.kenley.helios.cloud.common.ChallengeKeys;
 
 /**
  * The bootstrap challenge signature (Bootstrap API, section 3.2): the signed message, and ECDSA
@@ -20,7 +13,6 @@ import java.util.List;
  */
 final class ChallengeSignature {
   private static final String PREFIX = "helios-bootstrap-v1";
-  private static final BigInteger P256_ORDER = p256Order();
 
   private ChallengeSignature() {}
 
@@ -42,7 +34,7 @@ final class ChallengeSignature {
    * @throws IllegalArgumentException if the key isn't a P-256 public key in PEM
    */
   static boolean verify(String publicKeyPem, byte[] message, byte[] derSignature) {
-    PublicKey key = parseP256(publicKeyPem);
+    PublicKey key = ChallengeKeys.parseP256(publicKeyPem);
     try {
       Signature verifier = Signature.getInstance("SHA256withECDSA");
       verifier.initVerify(key);
@@ -51,38 +43,6 @@ final class ChallengeSignature {
     } catch (GeneralSecurityException e) {
       // A signature that isn't valid DER, for example.
       return false;
-    }
-  }
-
-  /**
-   * The P-256 public key in {@code pem}.
-   *
-   * @throws IllegalArgumentException if it isn't one
-   */
-  static ECPublicKey parseP256(String pem) {
-    String base64 =
-        pem.replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "")
-            .replaceAll("\\s", "");
-    try {
-      byte[] der = Base64.getDecoder().decode(base64);
-      PublicKey key = KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(der));
-      if (key instanceof ECPublicKey ec && ec.getParams().getOrder().equals(P256_ORDER)) {
-        return ec;
-      }
-      throw new IllegalArgumentException("not a P-256 public key");
-    } catch (GeneralSecurityException e) {
-      throw new IllegalArgumentException("not an EC public key in PEM", e);
-    }
-  }
-
-  private static BigInteger p256Order() {
-    try {
-      AlgorithmParameters parameters = AlgorithmParameters.getInstance("EC");
-      parameters.init(new ECGenParameterSpec("secp256r1"));
-      return parameters.getParameterSpec(ECParameterSpec.class).getOrder();
-    } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("the JDK has no P-256", e);
     }
   }
 }

@@ -31,7 +31,7 @@ import tv.kenley.helios.cloud.model.TokenLabels;
  *             token (M: tokenLabel, keyLabel, challengeKeyLabel),
  *             challenge (M: required (BOOL), publicKeyPem, keyFingerprint, registeredAt),
  *             aws (M: region, iotEndpoint, credentialsEndpoint, roleAlias),
- *             lastSeen (M: time, result, sourceIp, heliosVersion, hardwareModel),
+ *             lastSeen (M: at, result (LookupResult), sourceIp, heliosVersion, hardwareModel),
  *             createdAt (S), updatedAt (S). Timestamps are RFC 3339 strings.
  * mac_index   mac (S, key), deviceId (S)
  * challenges  challengeId (S, key), deviceId (S), macs (L of S), nonce (S, base64),
@@ -178,7 +178,7 @@ final class DeviceStore {
    */
   void recordLookup(String deviceId, LookupRecord lookup) {
     Map<String, AttributeValue> lastSeen = new LinkedHashMap<>();
-    lastSeen.put("time", str(lookup.time().toString()));
+    lastSeen.put("at", str(lookup.time().toString()));
     lastSeen.put("result", str(lookup.result()));
     lastSeen.put("sourceIp", str(lookup.sourceIp()));
     lookup.heliosVersion().ifPresent(v -> lastSeen.put("heliosVersion", str(v)));

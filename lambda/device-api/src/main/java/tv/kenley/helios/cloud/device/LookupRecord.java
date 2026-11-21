@@ -7,7 +7,7 @@ import java.util.Optional;
  * The last lookup of a device, stored as its {@code lastSeen} (Bootstrap API, section 5).
  *
  * @param time when it happened
- * @param result {@code identity}, {@code challenge}, or the error's name
+ * @param result a {@code LookupResult} value, such as {@code identity_returned}
  * @param sourceIp the caller's address
  * @param heliosVersion the version Helios reported, from {@code Bootstrap}
  * @param hardwareModel the hardware model Helios reported, from {@code Bootstrap}
