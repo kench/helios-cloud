@@ -22,26 +22,30 @@ const IOT_ENDPOINTS = {
   credentials: 'c1u80y5c766riu.credentials.iot.us-west-2.amazonaws.com',
 };
 
-/** Built by `./gradlew :device-api:lambdaZip` in ../lambda. */
-const DEVICE_API_ZIP = join(
-  __dirname,
-  '..',
-  '..',
-  'lambda',
-  'device-api',
-  'build',
-  'lambda',
-  'device-api.zip',
-);
-if (!existsSync(DEVICE_API_ZIP)) {
-  throw new Error(
-    `${DEVICE_API_ZIP} not found: run ./gradlew :device-api:lambdaZip in lambda/ first`,
+/** A Lambda package built by `./gradlew lambdaZip` in ../lambda. */
+function lambdaPackage(project: string): Code {
+  const zip = join(
+    __dirname,
+    '..',
+    '..',
+    'lambda',
+    project,
+    'build',
+    'lambda',
+    `${project}.zip`,
   );
+  if (!existsSync(zip)) {
+    throw new Error(
+      `${zip} not found: run ./gradlew lambdaZip in lambda/ first`,
+    );
+  }
+  return Code.fromAsset(zip);
 }
 
 const app = new App();
 new HeliosCloudStack(app, 'HeliosCloud', {
   env: {account: ACCOUNT, region: REGION},
-  deviceApiCode: Code.fromAsset(DEVICE_API_ZIP),
+  deviceApiCode: lambdaPackage('device-api'),
+  adminApiCode: lambdaPackage('admin-api'),
   iotEndpoints: IOT_ENDPOINTS,
 });

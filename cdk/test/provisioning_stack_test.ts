@@ -9,6 +9,13 @@ import {ACCOUNT, REGION, resolveArns, testStack} from './test_stack';
 
 const IOT = `arn:aws:iot:${REGION}:${ACCOUNT}`;
 
+/** An execute-api ARN for a route on the bootstrap API's dev stage. */
+function apiRoute(method: string, path: string): RegExp {
+  return new RegExp(
+    `^arn:aws:execute-api:${REGION}:${ACCOUNT}:.*Bootstrap.*Api.*/dev/${method}${path}$`,
+  );
+}
+
 function synthesize(): Template {
   return Template.fromStack(testStack().provisioning);
 }
@@ -69,6 +76,16 @@ describe('ProvisioningStack', () => {
         Action: ['iot:AttachThingPrincipal', 'iot:AttachPolicy'],
         Effect: 'Allow',
         Resource: `${IOT}:cert/*`,
+      },
+      // RegisterDevice and GetDevice on the bootstrap admin API, and nothing
+      // else there (BootstrapStack.grantProvisioning).
+      {
+        Action: 'execute-api:Invoke',
+        Effect: 'Allow',
+        Resource: [
+          expect.stringMatching(apiRoute('POST', '/v1/admin/devices')),
+          expect.stringMatching(apiRoute('GET', '/v1/admin/devices/\\*')),
+        ],
       },
     ]);
   });

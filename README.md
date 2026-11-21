@@ -16,11 +16,12 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   access keys.
 
 - `Bootstrap`: the bootstrap service (Bootstrap API, section 7). The device API Lambda (`java25`,
-  ARM64) behind a regional REST API, with the `devices`, `mac_index` and `challenges` DynamoDB
+  ARM64) and the admin API Lambda behind a regional REST API, with the `devices`, `mac_index` and `challenges` DynamoDB
   tables. For now it uses the API's default `execute-api` domain (stage `dev`), keeps PINs in the
   `devices` table under DynamoDB's encryption at rest, and is protected only by stage throttling
   (10 requests a second, bursts of 20). The stack output `BootstrapUrl` is the value for Helios's
-  `bootstrap.url`. The admin API comes in a later change.
+  `bootstrap.url`. The device routes are open; the admin routes (`/v1/admin/devices…`) need a
+  SigV4 signature, and `helios-provisioning` may call `RegisterDevice` and `GetDevice` only.
 
 ## Layout
 
@@ -94,8 +95,7 @@ with Smithy Java's type code generation (`smithy-build.json`). Its test reads ev
 in the model and checks that each body round-trips through the generated types. Generated code
 is excluded from Checkstyle, Spotless and coverage.
 
-`cdk synth` and `cdk deploy` need the device API's package first:
-`./gradlew :device-api:lambdaZip` in `lambda/`. CI's Synth job and the deploy workflow build it.
+`cdk synth` and `cdk deploy` need the Lambda packages first: `./gradlew lambdaZip` in `lambda/`. CI's Synth job and the deploy workflow build it.
 Archives are reproducible, so an unchanged Lambda keeps its asset hash and isn't redeployed.
 
 `lambda/device-api` is the device API Lambda (Bootstrap API, section 3). Its handler is

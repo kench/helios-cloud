@@ -1,6 +1,7 @@
 import {Match, Template} from 'aws-cdk-lib/assertions';
 
 import {
+  ADMIN_API_HANDLER,
   BOOTSTRAP_STAGE,
   DEVICE_API_HANDLER,
   THROTTLE_BURST,
@@ -22,6 +23,17 @@ function tableKeyedBy(template: Template, key: string): string {
   ).map(([id]) => id);
   expect(ids).toHaveLength(1);
   return ids[0];
+}
+
+/** The statements of the policy on the function whose logical ID starts with `id`. */
+function statementsOf(template: Template, id: string): unknown {
+  const policies = Object.values(
+    template.findResources('AWS::IAM::Policy'),
+  ).filter(policy =>
+    policy['Properties']['Roles'][0]['Ref'].startsWith(`${id}ServiceRole`),
+  );
+  expect(policies).toHaveLength(1);
+  return policies[0]['Properties']['PolicyDocument']['Statement'];
 }
 
 describe('BootstrapStack', () => {
@@ -99,13 +111,11 @@ describe('BootstrapStack', () => {
     });
   });
 
-  it('gives the function only the DynamoDB calls it makes', () => {
+  it('gives the device API only the DynamoDB calls it makes', () => {
     const template = synthesize();
     const devices = tableKeyedBy(template, 'deviceId');
-    const policies = Object.values(template.findResources('AWS::IAM::Policy'));
-    expect(policies).toHaveLength(1);
 
-    expect(policies[0]['Properties']['PolicyDocument']['Statement']).toEqual([
+    expect(statementsOf(template, 'DeviceApi')).toEqual([
       {
         Action: 'dynamodb:BatchGetItem',
         Effect: 'Allow',
@@ -136,18 +146,91 @@ describe('BootstrapStack', () => {
     ]);
   });
 
-  it('exposes only the two device routes, without an authorizer', () => {
+  it('gives the admin API only the DynamoDB calls it makes', () => {
     const template = synthesize();
-    template.resourceCountIs('AWS::ApiGateway::Method', 2);
+    const devices = tableKeyedBy(template, 'deviceId');
+
+    expect(statementsOf(template, 'AdminApi')).toEqual([
+      {
+        Action: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+        ],
+        Effect: 'Allow',
+        Resource: {'Fn::GetAtt': [devices, 'Arn']},
+      },
+      {
+        Action: 'dynamodb:Query',
+        Effect: 'Allow',
+        Resource: {
+          'Fn::Join': [
+            '',
+            [{'Fn::GetAtt': [devices, 'Arn']}, '/index/thingName'],
+          ],
+        },
+      },
+      {
+        Action: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
+        Effect: 'Allow',
+        Resource: {'Fn::GetAtt': [tableKeyedBy(template, 'mac'), 'Arn']},
+      },
+    ]);
+  });
+
+  it('runs the admin API on java25 with its own 30-day log', () => {
+    const template = synthesize();
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Runtime: 'java25',
+      Architectures: ['arm64'],
+      Handler: ADMIN_API_HANDLER,
+      Environment: {
+        Variables: {
+          DEVICES_TABLE: {Ref: tableKeyedBy(template, 'deviceId')},
+          MAC_INDEX_TABLE: {Ref: tableKeyedBy(template, 'mac')},
+        },
+      },
+    });
+    template.resourceCountIs('AWS::Logs::LogGroup', 2);
+  });
+
+  it('leaves the device routes open and signs the admin routes with IAM', () => {
+    const template = synthesize();
+    const methods = Object.values(
+      template.findResources('AWS::ApiGateway::Method'),
+    ).map(method => [
+      method['Properties']['HttpMethod'],
+      method['Properties']['AuthorizationType'],
+    ]);
+    expect(methods.sort()).toEqual(
+      [
+        ['DELETE', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['POST', 'AWS_IAM'],
+        ['POST', 'NONE'],
+        ['POST', 'NONE'],
+        ['PUT', 'AWS_IAM'],
+      ].sort(),
+    );
     template.allResourcesProperties('AWS::ApiGateway::Method', {
-      HttpMethod: 'POST',
-      AuthorizationType: 'NONE',
       Integration: {Type: 'AWS_PROXY'},
     });
     const paths = Object.values(
       template.findResources('AWS::ApiGateway::Resource'),
     ).map(resource => resource['Properties']['PathPart']);
-    expect(paths.sort()).toEqual(['bootstrap', 'challenge', 'device', 'v1']);
+    expect(paths.sort()).toEqual(
+      [
+        'v1',
+        'device',
+        'bootstrap',
+        'challenge',
+        'admin',
+        'devices',
+        '{deviceId}',
+        'status',
+      ].sort(),
+    );
   });
 
   it('throttles the stage', () => {
@@ -167,6 +250,7 @@ describe('BootstrapStack', () => {
   it("doesn't change the account-wide API Gateway settings", () => {
     const template = synthesize();
     template.resourceCountIs('AWS::ApiGateway::Account', 0);
-    template.resourceCountIs('AWS::IAM::Role', 1);
+    // Only the two functions' roles.
+    template.resourceCountIs('AWS::IAM::Role', 2);
   });
 });
