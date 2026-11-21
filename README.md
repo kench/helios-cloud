@@ -38,7 +38,12 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   `repo:kench@34564/helios@1464316682:ref:refs/tags/v*`). It may only read and write `pool/`,
   `dists/` and `keys/` (no deletes) and invalidate the distribution. Packages are signed by that
   workflow, so APT verifies them whatever the transport. The outputs `AptBucketName`,
-  `AptDistributionId` and `AptPublisherRoleArn` are for the workflow.
+  `AptDistributionId` and `AptPublisherRoleArn` are for the workflow. A second publisher,
+  `helios-packages-publisher` (output `AptPackagesPublisherRoleArn`), is for kench/helios-packages'
+  release tags (`<package>/<version>`, subject
+  `repo:kench@34564/helios-packages@1466772735:ref:refs/tags/*/*`): it may only read and write its
+  own `trixie` suite (`pool/trixie/`, `dists/trixie/`) and its key
+  (`keys/helios-packages-archive-keyring.asc`), which has its own signing key.
 
 ## Layout
 

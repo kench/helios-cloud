@@ -40,6 +40,7 @@ describe('HeliosCloudStack', () => {
       'AptBucketName',
       'AptDistributionId',
       'AptPublisherRoleArn',
+      'AptPackagesPublisherRoleArn',
     ]) {
       expect(Object.keys(template.findOutputs(name))).toHaveLength(1);
     }

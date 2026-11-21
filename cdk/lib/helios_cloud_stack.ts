@@ -106,5 +106,9 @@ export class HeliosCloudStack extends Stack {
       description: 'The role the helios release workflow assumes',
       value: this.aptRepository.publisherRole.roleArn,
     });
+    new CfnOutput(this, 'AptPackagesPublisherRoleArn', {
+      description: 'The role the helios-packages release workflow assumes',
+      value: this.aptRepository.packagesPublisherRole.roleArn,
+    });
   }
 }
