@@ -3,8 +3,8 @@
  * and other provisioning scripts need to create one device's AWS IoT
  * resources, and nothing else (Device Certificate Provisioning, Option A).
  *
- * The `helios-provisioner` IAM user can do nothing but assume the role and
- * sign in to the AWS CLI with `aws login`, so provisioning doesn't use the
+ * The `helios-provisioner` IAM user can do nothing but assume the role (and
+ * `helios-operator`) and sign in to the AWS CLI with `aws login`, so provisioning doesn't use the
  * account root user (which can't assume roles anyway). The user has no
  * password or access keys from CDK: its console password and MFA device are
  * set in the IAM console, and the CLI gets short-lived credentials from
@@ -21,6 +21,8 @@ import {
   User,
 } from 'aws-cdk-lib/aws-iam';
 import type {Construct} from 'constructs';
+
+import {OPERATOR_ROLE_NAME} from './operator_stack';
 
 /** The provisioning role's name, for `aws sts assume-role` and CLI profiles. */
 export const PROVISIONING_ROLE_NAME = 'helios-provisioning';
@@ -86,10 +88,20 @@ export class ProvisioningStack extends NestedStack {
         ManagedPolicy.fromAwsManagedPolicyName(CLI_SIGN_IN_POLICY),
       ],
     });
+    // The provisioner can also act as the operator (OperatorStack). The ARN
+    // is built from the name to avoid a reference between nested stacks.
     this.provisioner.addToPolicy(
       new PolicyStatement({
         actions: ['sts:AssumeRole'],
-        resources: [this.provisioningRole.roleArn],
+        resources: [
+          this.provisioningRole.roleArn,
+          this.formatArn({
+            service: 'iam',
+            region: '',
+            resource: 'role',
+            resourceName: OPERATOR_ROLE_NAME,
+          }),
+        ],
       }),
     );
   }
