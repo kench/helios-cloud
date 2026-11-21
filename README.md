@@ -15,7 +15,12 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   user's console password and MFA device are set in the IAM console, not in CDK, and it has no
   access keys.
 
-The bootstrap service comes in a later change.
+- `Bootstrap`: the bootstrap service (Bootstrap API, section 7). The device API Lambda (`java25`,
+  ARM64) behind a regional REST API, with the `devices`, `mac_index` and `challenges` DynamoDB
+  tables. For now it uses the API's default `execute-api` domain (stage `dev`), keeps PINs in the
+  `devices` table under DynamoDB's encryption at rest, and is protected only by stage throttling
+  (10 requests a second, bursts of 20). The stack output `BootstrapUrl` is the value for Helios's
+  `bootstrap.url`. The admin API comes in a later change.
 
 ## Layout
 
@@ -43,7 +48,7 @@ npm run build   # type-check (tsc)
 npm run lint    # gts: Google TypeScript style
 npm run fix     # apply gts formatting fixes
 npm test        # Jest with coverage; fails below 90% line coverage
-npx cdk synth   # synthesize the CloudFormation template into cdk.out/
+npx cdk synth   # synthesize the CloudFormation template into cdk.out/ (needs the Lambda zip below)
 ```
 
 `npx cdk deploy` changes the real AWS account. Don't run it unless a change is meant to be
@@ -86,6 +91,10 @@ cd lambda
 with Smithy Java's type code generation (`smithy-build.json`). Its test reads every protocol test
 in the model and checks that each body round-trips through the generated types. Generated code
 is excluded from Checkstyle, Spotless and coverage.
+
+`cdk synth` and `cdk deploy` need the device API's package first:
+`./gradlew :device-api:lambdaZip` in `lambda/`. CI's Synth job and the deploy workflow build it.
+Archives are reproducible, so an unchanged Lambda keeps its asset hash and isn't redeployed.
 
 `lambda/device-api` is the device API Lambda (Bootstrap API, section 3). Its handler is
 `tv.kenley.helios.cloud.device.DeviceApiHandler::handleRequest`, behind an API Gateway REST API
