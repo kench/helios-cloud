@@ -73,7 +73,9 @@ export class DeviceIdentityStack extends NestedStack {
       description: 'Temporary AWS credentials for Helios devices',
     });
     // SRT passphrases (HLD section 6.4). The secret ARN ends in a random
-    // suffix, hence the wildcard.
+    // suffix, hence the wildcard. Secrets Manager for sensitive configuration
+    // is temporary: it won't scale, and a modeled configuration API replaces
+    // it in P2 (HLD sections 5.2 and 14).
     this.deviceRole.addToPolicy(
       new PolicyStatement({
         actions: ['secretsmanager:GetSecretValue'],
