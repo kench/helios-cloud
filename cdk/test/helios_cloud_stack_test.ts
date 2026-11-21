@@ -26,6 +26,7 @@ describe('HeliosCloudStack', () => {
     const types = Object.values(resources).map(resource => resource.Type);
     expect(types.filter(type => type !== CDK_METADATA)).toEqual([
       'AWS::CloudFormation::Stack',
+      'AWS::CloudFormation::Stack',
     ]);
   });
 
