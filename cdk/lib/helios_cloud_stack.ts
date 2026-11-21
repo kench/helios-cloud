@@ -10,11 +10,15 @@ import type {StackProps} from 'aws-cdk-lib';
 import type {Construct} from 'constructs';
 
 import {DeviceIdentityStack} from './device_identity_stack';
+import {ProvisioningStack} from './provisioning_stack';
 
 /** The stack that holds all Helios cloud resources. */
 export class HeliosCloudStack extends Stack {
   /** The device IoT policy, IAM role and role alias. */
   readonly deviceIdentity: DeviceIdentityStack;
+
+  /** The role for provisioning devices. */
+  readonly provisioning: ProvisioningStack;
 
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, {
@@ -23,5 +27,6 @@ export class HeliosCloudStack extends Stack {
     });
 
     this.deviceIdentity = new DeviceIdentityStack(this, 'DeviceIdentity');
+    this.provisioning = new ProvisioningStack(this, 'Provisioning');
   }
 }

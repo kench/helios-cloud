@@ -9,8 +9,13 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
 - `DeviceIdentity`: the AWS IoT policy for device certificates (`helios-device-policy`), and the
   IAM role and role alias (`helios-device-role-alias`) that devices get temporary AWS credentials
   through. Each device can use only its own client ID, topics and shadows.
+- `Provisioning`: the `helios-provisioning` role, which can only create AWS IoT things and
+  certificates and attach them (to a thing and to an IoT policy), and the `helios-provisioner`
+  IAM user, which can only assume that role and sign in to the AWS CLI with `aws login`. The
+  user's console password and MFA device are set in the IAM console, not in CDK, and it has no
+  access keys.
 
-The bootstrap service comes in a later change. Nothing is deployed from this repository yet.
+The bootstrap service comes in a later change.
 
 ## Layout
 
