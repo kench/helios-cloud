@@ -11,9 +11,14 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   through. Each device can use only its own client ID, topics and shadows.
 - `Provisioning`: the `helios-provisioning` role, which can only create AWS IoT things and
   certificates and attach them (to a thing and to an IoT policy), and the `helios-provisioner`
-  IAM user, which can only assume that role and sign in to the AWS CLI with `aws login`. The
-  user's console password and MFA device are set in the IAM console, not in CDK, and it has no
-  access keys.
+  IAM user, which can only assume that role (and `helios-operator`) and sign in to the AWS CLI
+  with `aws login`. The user's console password and MFA device are set in the IAM console, not in
+  CDK, and it has no access keys. **Temporarily**, `helios-provisioning` can also send commands
+  (as `helios-operator` can), so a freshly provisioned scanner can be checked with `helios.ping`
+  from the same profile; that grant goes once operators use `helios-operator`.
+- `Operator`: the `helios-operator` role, which can publish Helios commands
+  (`helios/<thing>/cmd/<module>`) and read the responses (`helios/<thing>/rsp/<module>`) over
+  MQTT, connecting with a client ID that starts with `helios-operator-` (LLD 2, section 7.2).
 
 - `Bootstrap`: the bootstrap service (Bootstrap API, section 7). The device API Lambda (`java25`,
   ARM64) and the admin API Lambda behind a regional REST API, with the `devices`, `mac_index` and `challenges` DynamoDB

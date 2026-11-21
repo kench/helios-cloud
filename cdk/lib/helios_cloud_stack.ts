@@ -2,7 +2,7 @@
  * @fileoverview The CloudFormation stack for the Helios cloud resources.
  *
  * Each group of resources is a nested stack: device identity, provisioning,
- * and the bootstrap service (Bootstrap API, section 7).
+ * operating devices, and the bootstrap service (Bootstrap API, section 7).
  */
 
 import {CfnOutput, Stack} from 'aws-cdk-lib';
@@ -15,6 +15,7 @@ import {
   DEVICE_ROLE_ALIAS_NAME,
   DeviceIdentityStack,
 } from './device_identity_stack';
+import {OperatorStack} from './operator_stack';
 import {ProvisioningStack} from './provisioning_stack';
 
 /** The account's AWS IoT endpoints, which devices are told to use. */
@@ -43,6 +44,9 @@ export class HeliosCloudStack extends Stack {
   /** The role for provisioning devices. */
   readonly provisioning: ProvisioningStack;
 
+  /** The role for sending device commands. */
+  readonly operator: OperatorStack;
+
   /** The bootstrap service. */
   readonly bootstrap: BootstrapStack;
 
@@ -54,6 +58,7 @@ export class HeliosCloudStack extends Stack {
 
     this.deviceIdentity = new DeviceIdentityStack(this, 'DeviceIdentity');
     this.provisioning = new ProvisioningStack(this, 'Provisioning');
+    this.operator = new OperatorStack(this, 'Operator');
     this.bootstrap = new BootstrapStack(this, 'Bootstrap', {
       deviceApiCode: props.deviceApiCode,
       adminApiCode: props.adminApiCode,
@@ -66,6 +71,13 @@ export class HeliosCloudStack extends Stack {
 
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
+
+    // TEMPORARY: the provisioning role can also send commands, so that a
+    // freshly provisioned scanner can be checked end to end (helios.ping)
+    // with the one profile we sign in with today. Commands belong to
+    // helios-operator; remove this grant once the provisioner user (or
+    // whoever operates devices) assumes that role instead.
+    this.operator.grantCommands(this.provisioning.provisioningRole);
 
     new CfnOutput(this, 'BootstrapUrl', {
       description: "Helios's bootstrap.url (the default execute-api domain)",

@@ -1,5 +1,6 @@
 import {Match, Template} from 'aws-cdk-lib/assertions';
 
+import {OPERATOR_CLIENT_PREFIX} from '../lib/operator_stack';
 import {
   PROVISIONER_USER_NAME,
   PROVISIONING_ROLE_NAME,
@@ -51,7 +52,7 @@ describe('ProvisioningStack', () => {
     ]);
   });
 
-  it('allows only creating and attaching per-device IoT resources', () => {
+  it('allows creating and attaching per-device IoT resources and, for now, commands', () => {
     const template = synthesize();
     template.hasResourceProperties('AWS::IAM::Role', {
       ManagedPolicyArns: Match.absent(),
@@ -87,10 +88,31 @@ describe('ProvisioningStack', () => {
           expect.stringMatching(apiRoute('GET', '/v1/admin/devices/\\*')),
         ],
       },
+      // Temporary: commands, as for helios-operator (HeliosCloudStack).
+      {
+        Action: 'iot:Connect',
+        Effect: 'Allow',
+        Resource: `${IOT}:client/${OPERATOR_CLIENT_PREFIX}*`,
+      },
+      {
+        Action: 'iot:Publish',
+        Effect: 'Allow',
+        Resource: `${IOT}:topic/helios/*/cmd/*`,
+      },
+      {
+        Action: 'iot:Subscribe',
+        Effect: 'Allow',
+        Resource: `${IOT}:topicfilter/helios/*/rsp/*`,
+      },
+      {
+        Action: 'iot:Receive',
+        Effect: 'Allow',
+        Resource: `${IOT}:topic/helios/*/rsp/*`,
+      },
     ]);
   });
 
-  it('has a user that can only assume the role and sign in to the CLI', () => {
+  it('has a user that can only assume its roles and sign in to the CLI', () => {
     const template = synthesize();
     template.resourceCountIs('AWS::IAM::User', 1);
     template.resourceCountIs('AWS::IAM::AccessKey', 0);
@@ -106,11 +128,16 @@ describe('ProvisioningStack', () => {
 
     const policy = policyFor(template, 'AWS::IAM::User');
 
-    expect(policy['Properties']['PolicyDocument']['Statement']).toEqual([
+    expect(
+      resolveArns(policy['Properties']['PolicyDocument']['Statement']),
+    ).toEqual([
       {
         Action: 'sts:AssumeRole',
         Effect: 'Allow',
-        Resource: {'Fn::GetAtt': [roles[0], 'Arn']},
+        Resource: [
+          {'Fn::GetAtt': [roles[0], 'Arn']},
+          `arn:aws:iam::${ACCOUNT}:role/helios-operator`,
+        ],
       },
     ]);
   });

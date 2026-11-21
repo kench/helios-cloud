@@ -23,6 +23,7 @@ describe('HeliosCloudStack', () => {
       'AWS::CloudFormation::Stack',
       'AWS::CloudFormation::Stack',
       'AWS::CloudFormation::Stack',
+      'AWS::CloudFormation::Stack',
     ]);
   });
 
