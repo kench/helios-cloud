@@ -4,16 +4,20 @@ The cloud side of Helios: a CDK app for the AWS resources Helios devices use, an
 bootstrap service's Lambdas. The design is in the Helios design pages in Notion: the High-Level
 Design, LLD 2 (section 8, cloud infrastructure) and the Bootstrap API (section 7).
 
-The stack is empty for now. The device identity resources (AWS IoT policy, IAM role and role
-alias) and the bootstrap service come in later changes. Nothing is deployed from this repository
-yet.
+The `HeliosCloud` stack holds one nested stack for each group of resources:
+
+- `DeviceIdentity`: the AWS IoT policy for device certificates (`helios-device-policy`), and the
+  IAM role and role alias (`helios-device-role-alias`) that devices get temporary AWS credentials
+  through. Each device can use only its own client ID, topics and shadows.
+
+The bootstrap service comes in a later change. Nothing is deployed from this repository yet.
 
 ## Layout
 
 ```
 cdk/                  CDK app (TypeScript), generated with `cdk init app --language typescript`
   bin/helios_cloud.ts   entry point: the HeliosCloud stack in us-west-2
-  lib/                  constructs and the stack
+  lib/                  the stack and its nested stacks
   test/                 Jest tests (*_test.ts) on the synthesized template
   AGENTS.md             notes for coding agents (from cdk init, adapted)
 .github/workflows/    CI
