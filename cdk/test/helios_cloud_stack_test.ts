@@ -20,11 +20,13 @@ function synthesize(): Template {
 }
 
 describe('HeliosCloudStack', () => {
-  it('creates no resources yet', () => {
+  it('holds only nested stacks', () => {
     const resources: Record<string, CfnResource> =
       synthesize().toJSON()['Resources'] ?? {};
     const types = Object.values(resources).map(resource => resource.Type);
-    expect(types.filter(type => type !== CDK_METADATA)).toEqual([]);
+    expect(types.filter(type => type !== CDK_METADATA)).toEqual([
+      'AWS::CloudFormation::Stack',
+    ]);
   });
 
   it('has a description', () => {
