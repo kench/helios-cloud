@@ -1,4 +1,4 @@
-package tv.kenley.helios.cloud.device;
+package tv.kenley.helios.cloud.common;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;

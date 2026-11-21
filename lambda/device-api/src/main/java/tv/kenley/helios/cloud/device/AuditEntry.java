@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import tv.kenley.helios.cloud.common.Json;
 
 /**
  * One device API call, for the audit log (Bootstrap API, section 5): time, source IP, MACs, the

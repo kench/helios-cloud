@@ -3,9 +3,7 @@
 // the MAC index and challenges.
 
 dependencies {
-    implementation(project(":model"))
-    implementation(libs.aws.lambda.core)
-    implementation(libs.aws.lambda.events)
+    implementation(project(":common"))
     implementation(platform(libs.aws.sdk.bom))
     implementation(libs.aws.sdk.dynamodb) {
         // The JDK's HTTP client (url-connection-client) is enough for one

@@ -24,6 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
 import software.amazon.smithy.model.node.StringNode;
+import tv.kenley.helios.cloud.common.ChallengeKeys;
 
 /** The challenge message and signature, checked against helios-contract's challenge-v1.json. */
 final class ChallengeSignatureTest {
@@ -95,10 +96,10 @@ final class ChallengeSignatureTest {
     rsa.initialize(2048);
     String rsaKey = pem(rsa.generateKeyPair().getPublic().getEncoded());
 
-    assertThrows(IllegalArgumentException.class, () -> ChallengeSignature.parseP256(p384));
-    assertThrows(IllegalArgumentException.class, () -> ChallengeSignature.parseP256(rsaKey));
+    assertThrows(IllegalArgumentException.class, () -> ChallengeKeys.parseP256(p384));
+    assertThrows(IllegalArgumentException.class, () -> ChallengeKeys.parseP256(rsaKey));
     assertThrows(
-        IllegalArgumentException.class, () -> ChallengeSignature.parseP256(pem(new byte[] {1})));
+        IllegalArgumentException.class, () -> ChallengeKeys.parseP256(pem(new byte[] {1})));
   }
 
   @Test

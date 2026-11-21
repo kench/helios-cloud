@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tv.kenley.helios.cloud.common.RestJson;
 
 @ExtendWith(MockitoExtension.class)
 final class DeviceApiHandlerTest {
@@ -37,10 +38,10 @@ final class DeviceApiHandlerTest {
 
   @Test
   void passesTheRequestThroughAndReturnsTheResponse() {
-    ArgumentCaptor<DeviceApi.Request> request = ArgumentCaptor.forClass(DeviceApi.Request.class);
+    ArgumentCaptor<RestJson.Request> request = ArgumentCaptor.forClass(RestJson.Request.class);
     when(context.getAwsRequestId()).thenReturn("request-1");
     when(api.handle(request.capture()))
-        .thenReturn(new DeviceApi.Response(200, Map.of("Cache-Control", "no-store"), "{}"));
+        .thenReturn(new RestJson.Response(200, Map.of("Cache-Control", "no-store"), "{}"));
 
     APIGatewayProxyResponseEvent response =
         new DeviceApiHandler(api).handleRequest(event("{\"a\":1}", false), context);
@@ -49,7 +50,7 @@ final class DeviceApiHandlerTest {
     assertEquals("no-store", response.getHeaders().get("Cache-Control"));
     assertEquals("{}", response.getBody());
     assertFalse(response.getIsBase64Encoded());
-    DeviceApi.Request seen = request.getValue();
+    RestJson.Request seen = request.getValue();
     assertEquals("POST", seen.method());
     assertEquals(DeviceApi.BOOTSTRAP_PATH, seen.path());
     assertEquals("203.0.113.7", seen.sourceIp());
@@ -59,8 +60,8 @@ final class DeviceApiHandlerTest {
 
   @Test
   void decodesBase64BodiesAndToleratesMissingParts() {
-    ArgumentCaptor<DeviceApi.Request> request = ArgumentCaptor.forClass(DeviceApi.Request.class);
-    when(api.handle(request.capture())).thenReturn(new DeviceApi.Response(200, Map.of(), "{}"));
+    ArgumentCaptor<RestJson.Request> request = ArgumentCaptor.forClass(RestJson.Request.class);
+    when(api.handle(request.capture())).thenReturn(new RestJson.Response(200, Map.of(), "{}"));
     String encoded = Base64.getEncoder().encodeToString("{}".getBytes(StandardCharsets.UTF_8));
     APIGatewayProxyRequestEvent noContext = event(encoded, true).withRequestContext(null);
 

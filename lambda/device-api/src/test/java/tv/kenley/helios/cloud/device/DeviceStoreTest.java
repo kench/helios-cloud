@@ -250,7 +250,7 @@ final class DeviceStoreTest {
     assertEquals("devices", request.tableName());
     assertEquals("attribute_exists(deviceId)", request.conditionExpression());
     Map<String, AttributeValue> lastSeen = request.expressionAttributeValues().get(":lastSeen").m();
-    assertEquals("2026-11-21T03:00:00Z", lastSeen.get("time").s());
+    assertEquals("2026-11-21T03:00:00Z", lastSeen.get("at").s());
     assertEquals("203.0.113.7", lastSeen.get("sourceIp").s());
     assertEquals("PROXmobil3", lastSeen.get("hardwareModel").s());
   }

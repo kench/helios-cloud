@@ -1,4 +1,4 @@
-package tv.kenley.helios.cloud.device;
+package tv.kenley.helios.cloud.common;
 
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -7,7 +7,7 @@ import java.time.Instant;
  * ULIDs: 48 bits of milliseconds and 80 random bits in Crockford base32, 26 characters. IDs are a
  * short prefix and a ULID, such as {@code c-01JD5W3Q8T6M2K4X9B0N7C1D2E} (Bootstrap API, section 5).
  */
-final class Ulid {
+public final class Ulid {
   private static final char[] ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ".toCharArray();
   private static final int LENGTH = 26;
   private static final int RANDOM_BYTES = 10;
@@ -15,7 +15,7 @@ final class Ulid {
   private Ulid() {}
 
   /** A new ID: {@code prefix}, then a ULID for {@code time}. */
-  static String generate(String prefix, Instant time, SecureRandom random) {
+  public static String generate(String prefix, Instant time, SecureRandom random) {
     byte[] entropy = new byte[RANDOM_BYTES];
     random.nextBytes(entropy);
     // 128 bits: the time in the top 48, then the randomness.
