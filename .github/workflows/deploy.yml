@@ -23,7 +23,8 @@ defaults:
 
 env:
   # The account's GitHub Actions role, shared with Kenley/CDK. Its trust policy
-  # must allow repo:kench/helios-cloud:ref:refs/heads/main.
+  # must allow this repository's immutable OIDC subject for main:
+  # repo:kench@34564/helios-cloud@1463717924:ref:refs/heads/main
   AWS_ROLE_ARN: arn:aws:iam::857247606239:role/GitHubActionsRole
   AWS_REGION: us-west-2
 
