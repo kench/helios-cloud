@@ -23,6 +23,7 @@ The bootstrap service comes in a later change.
 contract/             git submodule: helios-contract (the Smithy model), pinned to a release tag
 lambda/               the Lambdas (Java 25, Gradle)
   model/                Java types generated from the contract with Smithy Java
+  device-api/           the device API Lambda: Bootstrap and AnswerChallenge
 cdk/                  CDK app (TypeScript), generated with `cdk init app --language typescript`
   bin/helios_cloud.ts   entry point: the HeliosCloud stack in us-west-2
   lib/                  the stack and its nested stacks
@@ -85,6 +86,13 @@ cd lambda
 with Smithy Java's type code generation (`smithy-build.json`). Its test reads every protocol test
 in the model and checks that each body round-trips through the generated types. Generated code
 is excluded from Checkstyle, Spotless and coverage.
+
+`lambda/device-api` is the device API Lambda (Bootstrap API, section 3). Its handler is
+`tv.kenley.helios.cloud.device.DeviceApiHandler::handleRequest`, behind an API Gateway REST API
+with Lambda proxy integration. `./gradlew :device-api:lambdaZip` builds the deployment package,
+`device-api/build/lambda/device-api.zip`. It reads its DynamoDB tables and default AWS settings
+from environment variables (`Settings.java`), and the item layout is documented in
+`DeviceStore.java`. Tests use Mockito, loaded as a Java agent.
 
 ## Standards
 

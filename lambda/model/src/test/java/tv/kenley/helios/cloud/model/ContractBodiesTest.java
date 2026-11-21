@@ -63,6 +63,24 @@ final class ContractBodiesTest {
   }
 
   @Test
+  void errorsKeepTheirHttpStatus() {
+    // httpError is listed in smithy-build.json's runtimeTraits; without it every client error
+    // would be a 400.
+    assertEquals(
+        403,
+        software.amazon.smithy.java.core.error.ModeledException.getHttpStatusCode(
+            DeviceDisabled.$SCHEMA));
+    assertEquals(
+        404,
+        software.amazon.smithy.java.core.error.ModeledException.getHttpStatusCode(
+            UnknownDevice.$SCHEMA));
+    assertEquals(
+        409,
+        software.amazon.smithy.java.core.error.ModeledException.getHttpStatusCode(
+            AmbiguousDevice.$SCHEMA));
+  }
+
+  @Test
   void pinsAreRedactedInToString() {
     DeviceIdentity identity =
         DeviceIdentity.builder()

@@ -17,3 +17,6 @@ dependencyResolutionManagement {
 
 // Types generated from the Smithy model in ../contract (helios-contract).
 include("model")
+
+// The device API Lambda: Bootstrap and AnswerChallenge (Bootstrap API, section 3).
+include("device-api")
