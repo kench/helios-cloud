@@ -38,8 +38,10 @@ import tv.kenley.helios.cloud.model.DeviceNotFound;
 import tv.kenley.helios.cloud.model.DeviceRole;
 import tv.kenley.helios.cloud.model.DeviceStatus;
 import tv.kenley.helios.cloud.model.InvalidChallengeKey;
+import tv.kenley.helios.cloud.model.PutChallengeKeyInput;
 import tv.kenley.helios.cloud.model.RegisterDeviceInput;
 import tv.kenley.helios.cloud.model.RegistrationConflict;
+import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
 
 @ExtendWith(MockitoExtension.class)
@@ -201,5 +203,41 @@ final class AdminServiceTest {
     doThrow(new AdminStore.NotDisabled()).when(store).delete(eq(ID), anyList());
 
     assertThrows(DeviceNotDisabled.class, () -> service.delete(ID));
+  }
+
+  @Test
+  void setsThePinOrSaysTheDeviceIsMissing() {
+    SetDevicePinInput input = SetDevicePinInput.builder().deviceId(ID).pin("123456").build();
+    when(store.setPin(eq(ID), eq("123456"), any())).thenReturn(true);
+    service.setPin(input);
+
+    when(store.setPin(eq(ID), eq("123456"), any())).thenReturn(false);
+    assertThrows(DeviceNotFound.class, () -> service.setPin(input));
+  }
+
+  @Test
+  void replacesTheChallengeKeyWithItsFingerprint() throws Exception {
+    String pem = p256Pem();
+    Map<String, AttributeValue> updated =
+        DeviceItems.item(DeviceItemsTest.newDevice(Optional.of(pem), Optional.empty()));
+    when(store.setChallengeKey(eq(ID), eq(pem), any(), any())).thenReturn(Optional.of(updated));
+
+    assertEquals(
+        pem,
+        service
+            .putChallengeKey(PutChallengeKeyInput.builder().deviceId(ID).publicKeyPem(pem).build())
+            .getPublicKeyPem());
+
+    when(store.setChallengeKey(eq(ID), eq(pem), any(), any())).thenReturn(Optional.empty());
+    assertThrows(
+        DeviceNotFound.class,
+        () ->
+            service.putChallengeKey(
+                PutChallengeKeyInput.builder().deviceId(ID).publicKeyPem(pem).build()));
+    assertThrows(
+        InvalidChallengeKey.class,
+        () ->
+            service.putChallengeKey(
+                PutChallengeKeyInput.builder().deviceId(ID).publicKeyPem("not a key").build()));
   }
 }

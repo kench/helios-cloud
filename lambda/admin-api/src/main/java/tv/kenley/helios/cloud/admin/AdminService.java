@@ -11,19 +11,23 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.smithy.java.framework.model.ValidationException;
 import tv.kenley.helios.cloud.common.ChallengeKeys;
 import tv.kenley.helios.cloud.common.Ulid;
+import tv.kenley.helios.cloud.model.ChallengeKeyDescription;
 import tv.kenley.helios.cloud.model.ChallengeSettings;
 import tv.kenley.helios.cloud.model.DeviceDescription;
 import tv.kenley.helios.cloud.model.DeviceNotDisabled;
 import tv.kenley.helios.cloud.model.DeviceNotFound;
 import tv.kenley.helios.cloud.model.DeviceStatus;
 import tv.kenley.helios.cloud.model.InvalidChallengeKey;
+import tv.kenley.helios.cloud.model.PutChallengeKeyInput;
 import tv.kenley.helios.cloud.model.RegisterDeviceInput;
 import tv.kenley.helios.cloud.model.RegistrationConflict;
+import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
 
 /**
- * The admin API's operations (Bootstrap API, section 4): RegisterDevice, GetDevice, SetDeviceStatus
- * and DeleteDevice. Errors are the modelled ones, thrown as the generated exceptions.
+ * The admin API's operations (Bootstrap API, section 4): RegisterDevice, GetDevice,
+ * SetDeviceStatus, SetDevicePin, PutChallengeKey and DeleteDevice. Errors are the modelled ones,
+ * thrown as the generated exceptions.
  */
 final class AdminService {
   private final AdminStore store;
@@ -94,6 +98,25 @@ final class AdminService {
             Optional.ofNullable(input.getReason()),
             clock.instant())
         .map(DeviceItems::describe)
+        .orElseThrow(() -> notFound(input.getDeviceId()));
+  }
+
+  /**
+   * {@code SetDevicePin}: the PIN the device's next bootstrap gets, after its token is
+   * re-provisioned (call it before the device tries the new token).
+   */
+  void setPin(SetDevicePinInput input) {
+    if (!store.setPin(input.getDeviceId(), input.getPin(), clock.instant())) {
+      throw notFound(input.getDeviceId());
+    }
+  }
+
+  /** {@code PutChallengeKey}: registers or replaces the challenge public key. */
+  ChallengeKeyDescription putChallengeKey(PutChallengeKeyInput input) {
+    String fingerprint = fingerprint(input.getPublicKeyPem());
+    return store
+        .setChallengeKey(input.getDeviceId(), input.getPublicKeyPem(), fingerprint, clock.instant())
+        .map(item -> DeviceItems.describe(item).getChallenge())
         .orElseThrow(() -> notFound(input.getDeviceId()));
   }
 

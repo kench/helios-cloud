@@ -184,6 +184,58 @@ final class AdminStore {
   }
 
   /**
+   * Replaces the record's PIN: the device's next bootstrap gets the new one. Returns false if there
+   * is no such record.
+   */
+  boolean setPin(String deviceId, String pin, Instant now) {
+    try {
+      db.updateItem(
+          UpdateItemRequest.builder()
+              .tableName(tables.devices())
+              .key(Map.of("deviceId", str(deviceId)))
+              .updateExpression("SET pin = :pin, updatedAt = :now")
+              .conditionExpression("attribute_exists(deviceId)")
+              .expressionAttributeValues(Map.of(":pin", str(pin), ":now", str(now.toString())))
+              .build());
+      return true;
+    } catch (ConditionalCheckFailedException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Replaces the record's challenge public key (keeping {@code challenge.required}). Returns the
+   * updated item, or empty if there is no such record.
+   */
+  Optional<Map<String, AttributeValue>> setChallengeKey(
+      String deviceId, String publicKeyPem, String fingerprint, Instant now) {
+    try {
+      return Optional.of(
+          db.updateItem(
+                  UpdateItemRequest.builder()
+                      .tableName(tables.devices())
+                      .key(Map.of("deviceId", str(deviceId)))
+                      .updateExpression(
+                          "SET challenge.publicKeyPem = :pem, challenge.keyFingerprint ="
+                              + " :fingerprint, challenge.registeredAt = :now, updatedAt = :now")
+                      .conditionExpression("attribute_exists(deviceId)")
+                      .expressionAttributeValues(
+                          Map.of(
+                              ":pem",
+                              str(publicKeyPem),
+                              ":fingerprint",
+                              str(fingerprint),
+                              ":now",
+                              str(now.toString())))
+                      .returnValues(ReturnValue.ALL_NEW)
+                      .build())
+              .attributes());
+    } catch (ConditionalCheckFailedException e) {
+      return Optional.empty();
+    }
+  }
+
+  /**
    * Deletes a disabled record and its MAC index entries in one transaction.
    *
    * @throws NotDisabled if the record isn't disabled (or was re-enabled meanwhile)

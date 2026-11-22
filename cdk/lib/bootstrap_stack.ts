@@ -337,6 +337,8 @@ export class BootstrapStack extends NestedStack {
     device.addMethod('GET', admin, iam);
     device.addMethod('DELETE', admin, iam);
     device.addResource('status').addMethod('PUT', admin, iam);
+    device.addResource('pin').addMethod('PUT', admin, iam);
+    device.addResource('challenge-key').addMethod('PUT', admin, iam);
 
     // Control routes (HLD section 7.3): SigV4 too; callers assume
     // helios-operator (grantControl).
