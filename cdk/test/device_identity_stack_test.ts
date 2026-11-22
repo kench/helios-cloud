@@ -83,6 +83,24 @@ describe('DeviceIdentityStack', () => {
     });
   });
 
+  it("keeps the device policy within AWS IoT's 2,048-character limit", () => {
+    // AWS IoT refuses a policy over 2,048 characters, not counting whitespace
+    // (helios-cloud #17's first deploy failed on it). Measured with the ARNs
+    // as they deploy, in a 12-digit account.
+    const document = statements(
+      synthesize(),
+      'AWS::IoT::Policy',
+      'PolicyDocument',
+    );
+    const deployed = JSON.stringify({
+      Version: '2012-10-17',
+      Statement: document,
+    })
+      .replaceAll(ACCOUNT, '123456789012')
+      .replace(/\s/g, '');
+    expect(deployed.length).toBeLessThanOrEqual(2048);
+  });
+
   it('limits each device to its own client ID, topics and shadows', () => {
     const template = synthesize();
     const alias = Object.keys(template.findResources('AWS::IoT::RoleAlias'));
@@ -112,9 +130,7 @@ describe('DeviceIdentityStack', () => {
           `${IOT}:topicfilter/helios/${THING}/cmd/*`,
           `${IOT}:topicfilter/${SHADOWS}/get/*`,
           `${IOT}:topicfilter/${SHADOWS}/update/*`,
-          `${IOT}:topicfilter/${EXECUTIONS}/*/request/json`,
-          `${IOT}:topicfilter/${EXECUTIONS}/*/response/accepted/json`,
-          `${IOT}:topicfilter/${EXECUTIONS}/*/response/rejected/json`,
+          `${IOT}:topicfilter/${EXECUTIONS}/*`,
         ],
       },
       {
@@ -124,9 +140,7 @@ describe('DeviceIdentityStack', () => {
           `${IOT}:topic/helios/${THING}/cmd/*`,
           `${IOT}:topic/${SHADOWS}/get/*`,
           `${IOT}:topic/${SHADOWS}/update/*`,
-          `${IOT}:topic/${EXECUTIONS}/*/request/json`,
-          `${IOT}:topic/${EXECUTIONS}/*/response/accepted/json`,
-          `${IOT}:topic/${EXECUTIONS}/*/response/rejected/json`,
+          `${IOT}:topic/${EXECUTIONS}/*`,
         ],
       },
       {

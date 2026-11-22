@@ -47,7 +47,11 @@ const CREDENTIALS_THING = '${credentials-iot:ThingName}';
 /** The modules' named shadows, under `$aws/things/<thing>/shadow/name/`. */
 const SHADOWS = `$aws/things/${IOT_THING}/shadow/name/*`;
 
-/** The device's AWS IoT command executions (LLD 2, section 7.3). */
+/**
+ * The device's AWS IoT command executions (LLD 2, section 7.3). Subscribe and
+ * Receive use one wildcard under it, not the three topics, to keep the policy
+ * under AWS IoT's 2,048-character limit.
+ */
 const EXECUTIONS = `$aws/commands/things/${IOT_THING}/executions`;
 
 /**
@@ -141,9 +145,7 @@ export class DeviceIdentityStack extends NestedStack {
             iot('topicfilter', `helios/${IOT_THING}/cmd/*`),
             iot('topicfilter', `${SHADOWS}/get/*`),
             iot('topicfilter', `${SHADOWS}/update/*`),
-            iot('topicfilter', `${EXECUTIONS}/*/request/json`),
-            iot('topicfilter', `${EXECUTIONS}/*/response/accepted/json`),
-            iot('topicfilter', `${EXECUTIONS}/*/response/rejected/json`),
+            iot('topicfilter', `${EXECUTIONS}/*`),
           ],
         }),
         new PolicyStatement({
@@ -153,9 +155,7 @@ export class DeviceIdentityStack extends NestedStack {
             iot('topic', `helios/${IOT_THING}/cmd/*`),
             iot('topic', `${SHADOWS}/get/*`),
             iot('topic', `${SHADOWS}/update/*`),
-            iot('topic', `${EXECUTIONS}/*/request/json`),
-            iot('topic', `${EXECUTIONS}/*/response/accepted/json`),
-            iot('topic', `${EXECUTIONS}/*/response/rejected/json`),
+            iot('topic', `${EXECUTIONS}/*`),
           ],
         }),
         // Temporary AWS credentials from the credentials provider.
