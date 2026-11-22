@@ -188,7 +188,7 @@ record StreamShadow(Document document) {
     }
     if (desired.containsKey("source") && !refused.contains("source")) {
       differs.add(
-          !Objects.equals(
+          !sourceMatches(
               desired.get("source"),
               ShadowJson.at(r, "source").map(StreamShadow::sourceFields).orElse(null)));
     }
@@ -324,6 +324,22 @@ record StreamShadow(Document document) {
       default -> throw new IllegalArgumentException("unknown source " + source);
     }
     return fields;
+  }
+
+  /**
+   * Whether the reported source is the desired one. A test pattern compares only the fields given:
+   * the device fills in its size and rate when they're left out. A camera's or RTMP source's fields
+   * are compared in full, since a missing {@code audio} or {@code camera} means none.
+   */
+  static boolean sourceMatches(Object desired, Map<String, Object> reported) {
+    if (!(desired instanceof Map<?, ?> want) || reported == null) {
+      return Objects.equals(desired, reported);
+    }
+    if (!"test".equals(want.get("type"))) {
+      return want.equals(reported);
+    }
+    return want.entrySet().stream()
+        .allMatch(e -> Objects.equals(e.getValue(), reported.get(e.getKey())));
   }
 
   /** The API's source for {@code fields} (shadow form), if it's one the API knows. */
