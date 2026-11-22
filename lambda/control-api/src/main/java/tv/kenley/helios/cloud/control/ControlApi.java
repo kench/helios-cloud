@@ -28,8 +28,8 @@ import tv.kenley.helios.cloud.control.model.UpdateStreamInput;
 /**
  * The Control API's HTTP side, in {@code restJson1} (HLD section 7.3). API Gateway checks the IAM
  * signature before the request gets here; every call writes one audit line with the caller's ARN,
- * and a destination change also records the new destination, a Wi-Fi change the SSID (never the
- * passphrase).
+ * and a destination change also records the new destination (its SRT passphrase as {@code ***}), a
+ * Wi-Fi change the SSID (never the passphrase).
  */
 final class ControlApi {
   private static final String DEVICES = "^/v1/control/devices";
@@ -173,7 +173,7 @@ final class ControlApi {
                       body,
                       SetStreamDestinationInput.builder(),
                       b -> b.deviceId(device).streamId(stream));
-              destination = input.getUrl();
+              destination = Destinations.redact(input.getUrl());
               yield RestJson.ok(202, service.setDestination(input));
             }
           };

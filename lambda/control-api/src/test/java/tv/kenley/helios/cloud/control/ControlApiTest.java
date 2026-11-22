@@ -169,6 +169,18 @@ class ControlApiTest {
     assertTrue(invalid.body().contains("\"part\":\"mode\""), invalid.body());
     assertTrue(audit.getLast().contains("\"result\":\"InvalidDestination\""));
 
+    // A destination's SRT passphrase never reaches the audit log, valid URL or not.
+    call(
+        "PUT",
+        BASE + "/streams/pocket/destination",
+        "{\"url\":\"srt://h:1?passphrase=correct-horse-9\"}");
+    assertTrue(audit.getLast().contains("passphrase=***"), audit.getLast());
+    call(
+        "PUT",
+        BASE + "/streams/pocket/destination",
+        "{\"url\":\"srt://h:1?mode=x&passphrase=correct-horse-9\"}");
+    assertFalse(String.join("\n", audit).contains("correct-horse-9"));
+
     RestJson.Response missing = call("GET", BASE + "/streams/nope", "");
     assertEquals(404, missing.status());
     assertEquals("StreamNotFound", missing.headers().get("X-Amzn-Errortype"));

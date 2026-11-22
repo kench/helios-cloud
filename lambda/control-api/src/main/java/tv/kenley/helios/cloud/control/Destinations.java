@@ -25,7 +25,18 @@ final class Destinations {
   /** The order parameters are written in, in a {@link Destination#url()}. */
   private static final List<String> PARAMETERS = List.of("streamid", "latency", "passphrase");
 
+  /** A {@code passphrase} parameter's value, up to the next parameter or fragment. */
+  private static final Pattern PASSPHRASE_VALUE = Pattern.compile("([?&]passphrase=)[^&#]*");
+
   private Destinations() {}
+
+  /**
+   * {@code url} with any SRT passphrase replaced by {@code ***}, for logs: works on any string,
+   * valid destination or not, since the audit line records what the caller sent.
+   */
+  static String redact(String url) {
+    return url == null ? null : PASSPHRASE_VALUE.matcher(url).replaceAll("$1***");
+  }
 
   /**
    * A checked destination.
