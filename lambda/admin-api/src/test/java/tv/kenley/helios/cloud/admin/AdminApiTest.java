@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -28,10 +29,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
 import tv.kenley.helios.cloud.common.RestJson;
+import tv.kenley.helios.cloud.model.ChallengeKeyDescription;
 import tv.kenley.helios.cloud.model.DeviceDescription;
 import tv.kenley.helios.cloud.model.DeviceNotFound;
 import tv.kenley.helios.cloud.model.DeviceStatus;
+import tv.kenley.helios.cloud.model.PutChallengeKeyInput;
 import tv.kenley.helios.cloud.model.RegisterDeviceInput;
+import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
 
 @ExtendWith(MockitoExtension.class)
@@ -198,7 +202,8 @@ final class AdminApiTest {
     assertEquals(404, call("PATCH", AdminApi.DEVICES_PATH + "/" + ID, "{}").status());
     assertEquals(404, call("GET", AdminApi.DEVICES_PATH, "").status());
     assertEquals(404, call("POST", AdminApi.DEVICES_PATH + "/" + ID + "/status", "{}").status());
-    assertEquals(404, call("PUT", AdminApi.DEVICES_PATH + "/" + ID + "/pin", "{}").status());
+    assertEquals(404, call("PUT", AdminApi.DEVICES_PATH + "/" + ID + "/token", "{}").status());
+    assertEquals(404, call("POST", AdminApi.DEVICES_PATH + "/" + ID + "/pin", "{}").status());
     assertTrue(audit.isEmpty());
   }
 
@@ -234,5 +239,55 @@ final class AdminApiTest {
                 context);
 
     assertEquals(200, response.getStatusCode());
+  }
+
+  @Test
+  void setsThePinWithNoContentAndNeverLogsIt() {
+    ArgumentCaptor<SetDevicePinInput> input = ArgumentCaptor.forClass(SetDevicePinInput.class);
+    doNothing().when(service).setPin(input.capture());
+
+    RestJson.Response response =
+        call(
+            "PUT",
+            AdminApi.DEVICES_PATH + "/" + ID + "/pin",
+            "{\"pin\": \"" + DeviceItemsTest.PIN + "\"}");
+
+    assertEquals(204, response.status());
+    assertEquals(ID, input.getValue().getDeviceId());
+    assertEquals(DeviceItemsTest.PIN, input.getValue().getPin());
+    assertEquals("SetDevicePin", lastAudit().expectStringMember("operation").getValue());
+    assertEquals("ok", lastAudit().expectStringMember("result").getValue());
+    for (String line : audit) {
+      assertFalse(line.contains(DeviceItemsTest.PIN), line);
+    }
+  }
+
+  @Test
+  void putsTheChallengeKey() {
+    ArgumentCaptor<PutChallengeKeyInput> input =
+        ArgumentCaptor.forClass(PutChallengeKeyInput.class);
+    when(service.putChallengeKey(input.capture()))
+        .thenReturn(
+            ChallengeKeyDescription.builder()
+                .required(false)
+                .publicKeyPem("PEM")
+                .keyFingerprint("ab")
+                .build());
+
+    RestJson.Response response =
+        call(
+            "PUT",
+            AdminApi.DEVICES_PATH + "/" + ID + "/challenge-key",
+            "{\"publicKeyPem\": \"PEM\"}");
+
+    assertEquals(200, response.status());
+    assertEquals(ID, input.getValue().getDeviceId());
+    assertEquals(
+        "ab",
+        json(response.body())
+            .expectObjectMember("challenge")
+            .expectStringMember("keyFingerprint")
+            .getValue());
+    assertEquals("PutChallengeKey", lastAudit().expectStringMember("operation").getValue());
   }
 }

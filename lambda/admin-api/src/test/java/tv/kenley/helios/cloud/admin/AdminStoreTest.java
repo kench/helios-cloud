@@ -202,4 +202,41 @@ final class AdminStoreTest {
 
     assertThrows(TransactionCanceledException.class, () -> store().delete(ID, MACS));
   }
+
+  @Test
+  void setsThePinOnlyOnAnExistingRecord() {
+    when(db.updateItem(update.capture())).thenReturn(UpdateItemResponse.builder().build());
+
+    assertTrue(store().setPin(ID, DeviceItemsTest.PIN, DeviceItemsTest.NOW));
+
+    UpdateItemRequest request = update.getValue();
+    assertEquals("SET pin = :pin, updatedAt = :now", request.updateExpression());
+    assertEquals(DeviceItemsTest.PIN, request.expressionAttributeValues().get(":pin").s());
+    assertEquals("attribute_exists(deviceId)", request.conditionExpression());
+
+    when(db.updateItem(any(UpdateItemRequest.class)))
+        .thenThrow(ConditionalCheckFailedException.builder().message("missing").build());
+    assertFalse(store().setPin(ID, DeviceItemsTest.PIN, DeviceItemsTest.NOW));
+  }
+
+  @Test
+  void replacesTheChallengeKeyKeepingRequired() {
+    when(db.updateItem(update.capture()))
+        .thenReturn(
+            UpdateItemResponse.builder()
+                .attributes(Map.of("deviceId", AttributeValue.fromS(ID)))
+                .build());
+
+    assertTrue(store().setChallengeKey(ID, "PEM", "ab", DeviceItemsTest.NOW).isPresent());
+
+    UpdateItemRequest request = update.getValue();
+    assertTrue(request.updateExpression().contains("challenge.publicKeyPem = :pem"));
+    assertTrue(request.updateExpression().contains("challenge.keyFingerprint = :fingerprint"));
+    assertFalse(request.updateExpression().contains("required"), "required is left as it is");
+    assertEquals(ReturnValue.ALL_NEW, request.returnValues());
+
+    when(db.updateItem(any(UpdateItemRequest.class)))
+        .thenThrow(ConditionalCheckFailedException.builder().message("missing").build());
+    assertTrue(store().setChallengeKey(ID, "PEM", "ab", DeviceItemsTest.NOW).isEmpty());
+  }
 }

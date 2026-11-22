@@ -303,10 +303,12 @@ describe('BootstrapStack', () => {
     ]);
     expect(methods.sort()).toEqual(
       [
-        // Admin.
+        // Admin (PUT: status, pin, challenge-key).
         ['DELETE', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['POST', 'AWS_IAM'],
+        ['PUT', 'AWS_IAM'],
+        ['PUT', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],
         // Device.
         ['POST', 'NONE'],
@@ -344,6 +346,8 @@ describe('BootstrapStack', () => {
         'devices',
         '{deviceId}',
         'status',
+        'pin',
+        'challenge-key',
         'control',
         'devices',
         '{deviceId}',

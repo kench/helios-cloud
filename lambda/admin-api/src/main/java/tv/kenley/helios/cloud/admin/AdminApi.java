@@ -3,6 +3,7 @@ package tv.kenley.helios.cloud.admin;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -14,8 +15,11 @@ import tv.kenley.helios.cloud.model.DeleteDeviceInput;
 import tv.kenley.helios.cloud.model.DeviceDescription;
 import tv.kenley.helios.cloud.model.GetDeviceInput;
 import tv.kenley.helios.cloud.model.GetDeviceOutput;
+import tv.kenley.helios.cloud.model.PutChallengeKeyInput;
+import tv.kenley.helios.cloud.model.PutChallengeKeyOutput;
 import tv.kenley.helios.cloud.model.RegisterDeviceInput;
 import tv.kenley.helios.cloud.model.RegisterDeviceOutput;
+import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusOutput;
 
@@ -29,6 +33,9 @@ final class AdminApi {
 
   private static final Pattern DEVICE = Pattern.compile("^/v1/admin/devices/([^/]+)$");
   private static final Pattern STATUS = Pattern.compile("^/v1/admin/devices/([^/]+)/status$");
+  private static final Pattern PIN = Pattern.compile("^/v1/admin/devices/([^/]+)/pin$");
+  private static final Pattern CHALLENGE_KEY =
+      Pattern.compile("^/v1/admin/devices/([^/]+)/challenge-key$");
 
   private final AdminService service;
   private final Consumer<String> auditLog;
@@ -82,6 +89,24 @@ final class AdminApi {
               yield RestJson.ok(
                   200, SetDeviceStatusOutput.builder().device(service.setStatus(input)).build());
             }
+            case "SetDevicePin" -> {
+              String id = deviceId;
+              service.setPin(
+                  RestJson.decode(
+                      request.body(), SetDevicePinInput.builder(), b -> b.deviceId(id)));
+              yield RestJson.noContent();
+            }
+            case "PutChallengeKey" -> {
+              String id = deviceId;
+              PutChallengeKeyInput input =
+                  RestJson.decode(
+                      request.body(), PutChallengeKeyInput.builder(), b -> b.deviceId(id));
+              yield RestJson.ok(
+                  200,
+                  PutChallengeKeyOutput.builder()
+                      .challenge(service.putChallengeKey(input))
+                      .build());
+            }
             default -> {
               String id = deviceId;
               service.delete(
@@ -117,9 +142,18 @@ final class AdminApi {
         default -> Optional.empty();
       };
     }
-    Matcher status = STATUS.matcher(path);
-    if (status.matches() && method.equals("PUT")) {
-      return Optional.of(new Route("SetDeviceStatus", status.group(1)));
+    if (method.equals("PUT")) {
+      for (Map.Entry<Pattern, String> entry :
+          Map.of(
+                  STATUS, "SetDeviceStatus",
+                  PIN, "SetDevicePin",
+                  CHALLENGE_KEY, "PutChallengeKey")
+              .entrySet()) {
+        Matcher matcher = entry.getKey().matcher(path);
+        if (matcher.matches()) {
+          return Optional.of(new Route(entry.getValue(), matcher.group(1)));
+        }
+      }
     }
     return Optional.empty();
   }
