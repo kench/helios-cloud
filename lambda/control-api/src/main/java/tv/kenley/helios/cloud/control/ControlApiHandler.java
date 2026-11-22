@@ -9,14 +9,17 @@ import java.time.Clock;
 import java.util.Map;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.iot.IotClient;
 import software.amazon.awssdk.services.iotdataplane.IotDataPlaneClient;
+import software.amazon.awssdk.services.iotjobsdataplane.IotJobsDataPlaneClient;
 import tv.kenley.helios.cloud.common.LambdaEvents;
 
 /**
  * The Lambda entry point for the Control API, behind IAM-authorized API Gateway routes. Its handler
  * string is {@code tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest}. It reads
- * {@code DEVICES_TABLE} and {@code IOT_DATA_ENDPOINT} (the account's {@code iot:Data-ATS} host)
- * from the environment.
+ * {@code DEVICES_TABLE}, {@code IOT_DATA_ENDPOINT} (the account's {@code iot:Data-ATS} host, for
+ * shadows and for starting command executions) and {@code IOT_ARN_PREFIX} ({@code
+ * arn:aws:iot:<region>:<account>}, for command and thing ARNs) from the environment.
  */
 public final class ControlApiHandler
     implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
@@ -52,9 +55,22 @@ public final class ControlApiHandler
             .httpClient(UrlConnectionHttpClient.create())
             .endpointOverride(iotEndpoint(env))
             .build();
+    IotJobsDataPlaneClient jobs =
+        IotJobsDataPlaneClient.builder()
+            .httpClient(UrlConnectionHttpClient.create())
+            .endpointOverride(iotEndpoint(env))
+            .build();
+    IotClient control = IotClient.builder().httpClient(UrlConnectionHttpClient.create()).build();
+    DeviceDirectory devices = new DeviceDirectory(db, required(env, "DEVICES_TABLE"));
+    IotShadows shadows = new IotShadows(iot);
     return new ControlApi(
-        new ControlService(
-            new DeviceDirectory(db, required(env, "DEVICES_TABLE")), new IotShadows(iot)),
+        new ControlService(devices, shadows),
+        new WifiControl(
+            devices,
+            shadows,
+            new IotCommands(jobs, control, required(env, "IOT_ARN_PREFIX")),
+            Clock.systemUTC(),
+            duration -> Thread.sleep(duration)),
         System.out::println,
         System.err::println,
         Clock.systemUTC());

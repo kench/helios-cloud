@@ -11,13 +11,16 @@ import java.util.regex.Pattern;
 import software.amazon.smithy.java.core.error.ModeledException;
 import tv.kenley.helios.cloud.common.Json;
 import tv.kenley.helios.cloud.common.RestJson;
+import tv.kenley.helios.cloud.control.model.DeleteWifiNetworkInput;
 import tv.kenley.helios.cloud.control.model.GetDeviceInput;
 import tv.kenley.helios.cloud.control.model.GetStreamInput;
 import tv.kenley.helios.cloud.control.model.ListDevicesInput;
 import tv.kenley.helios.cloud.control.model.ListInputsInput;
 import tv.kenley.helios.cloud.control.model.ListProfilesInput;
 import tv.kenley.helios.cloud.control.model.ListStreamsInput;
+import tv.kenley.helios.cloud.control.model.ListWifiNetworksInput;
 import tv.kenley.helios.cloud.control.model.SetStreamDestinationInput;
+import tv.kenley.helios.cloud.control.model.SetWifiNetworkInput;
 import tv.kenley.helios.cloud.control.model.StartStreamInput;
 import tv.kenley.helios.cloud.control.model.StopStreamInput;
 import tv.kenley.helios.cloud.control.model.UpdateStreamInput;
@@ -25,7 +28,8 @@ import tv.kenley.helios.cloud.control.model.UpdateStreamInput;
 /**
  * The Control API's HTTP side, in {@code restJson1} (HLD section 7.3). API Gateway checks the IAM
  * signature before the request gets here; every call writes one audit line with the caller's ARN,
- * and a destination change also records the new destination.
+ * and a destination change also records the new destination, a Wi-Fi change the SSID (never the
+ * passphrase).
  */
 final class ControlApi {
   private static final String DEVICES = "^/v1/control/devices";
@@ -36,6 +40,7 @@ final class ControlApi {
   private static final Pattern GET_DEVICE = Pattern.compile(DEVICE + "$");
   private static final Pattern INPUTS = Pattern.compile(DEVICE + "/inputs$");
   private static final Pattern PROFILES = Pattern.compile(DEVICE + "/profiles$");
+  private static final Pattern WIFI = Pattern.compile(DEVICE + "/wifi/networks$");
   private static final Pattern STREAMS = Pattern.compile(DEVICE + "/streams$");
   private static final Pattern ONE_STREAM = Pattern.compile(STREAM + "$");
   private static final Pattern START = Pattern.compile(STREAM + "/start$");
@@ -43,13 +48,19 @@ final class ControlApi {
   private static final Pattern DESTINATION = Pattern.compile(STREAM + "/destination$");
 
   private final ControlService service;
+  private final WifiControl wifi;
   private final Consumer<String> auditLog;
   private final Consumer<String> errorLog;
   private final Clock clock;
 
   ControlApi(
-      ControlService service, Consumer<String> auditLog, Consumer<String> errorLog, Clock clock) {
+      ControlService service,
+      WifiControl wifi,
+      Consumer<String> auditLog,
+      Consumer<String> errorLog,
+      Clock clock) {
     this.service = service;
+    this.wifi = wifi;
     this.auditLog = auditLog;
     this.errorLog = errorLog;
     this.clock = clock;
@@ -64,6 +75,7 @@ final class ControlApi {
     Route route = found.get();
     String result;
     String destination = null;
+    String ssid = null;
     RestJson.Response response;
     try {
       byte[] body = request.body();
@@ -98,6 +110,27 @@ final class ControlApi {
                   RestJson.decode(
                       new byte[0], ListProfilesInput.builder(), b -> b.deviceId(device));
               yield RestJson.ok(200, service.listProfiles(input.getDeviceId()));
+            }
+            case "ListWifiNetworks" -> {
+              ListWifiNetworksInput input =
+                  RestJson.decode(
+                      new byte[0], ListWifiNetworksInput.builder(), b -> b.deviceId(device));
+              yield RestJson.ok(200, wifi.list(input.getDeviceId()));
+            }
+            case "SetWifiNetwork" -> {
+              SetWifiNetworkInput input =
+                  RestJson.decode(body, SetWifiNetworkInput.builder(), b -> b.deviceId(device));
+              ssid = input.getSsid();
+              yield RestJson.ok(200, wifi.set(input));
+            }
+            case "DeleteWifiNetwork" -> {
+              DeleteWifiNetworkInput input =
+                  RestJson.decode(
+                      new byte[0],
+                      DeleteWifiNetworkInput.builder(),
+                      b -> b.deviceId(device).ssid(query.get("ssid")));
+              ssid = input.getSsid();
+              yield RestJson.ok(200, wifi.delete(input.getDeviceId(), input.getSsid()));
             }
             case "ListStreams" -> {
               ListStreamsInput input =
@@ -153,7 +186,7 @@ final class ControlApi {
       result = "InternalError";
       response = RestJson.internalError();
     }
-    auditLog.accept(audit(request, route, destination, result));
+    auditLog.accept(audit(request, route, destination, ssid, result));
     return response;
   }
 
@@ -182,6 +215,9 @@ final class ControlApi {
             new Rule("GET", GET_DEVICE, "GetDevice"),
             new Rule("GET", INPUTS, "ListInputs"),
             new Rule("GET", PROFILES, "ListProfiles"),
+            new Rule("GET", WIFI, "ListWifiNetworks"),
+            new Rule("PUT", WIFI, "SetWifiNetwork"),
+            new Rule("DELETE", WIFI, "DeleteWifiNetwork"),
             new Rule("GET", STREAMS, "ListStreams"),
             new Rule("GET", ONE_STREAM, "GetStream"),
             new Rule("PATCH", ONE_STREAM, "UpdateStream"),
@@ -199,7 +235,8 @@ final class ControlApi {
     return Optional.empty();
   }
 
-  private String audit(RestJson.Request request, Route route, String destination, String result) {
+  private String audit(
+      RestJson.Request request, Route route, String destination, String ssid, String result) {
     List<String> fields = new ArrayList<>();
     fields.add(Json.field("type", "control-audit"));
     fields.add(Json.field("time", clock.instant().toString()));
@@ -215,6 +252,9 @@ final class ControlApi {
     }
     if (destination != null) {
       fields.add(Json.field("destination", destination));
+    }
+    if (ssid != null) {
+      fields.add(Json.field("ssid", ssid));
     }
     fields.add(Json.field("result", result));
     return "{" + String.join(",", fields) + "}";

@@ -28,6 +28,7 @@ import {
 } from 'aws-cdk-lib/aws-dynamodb';
 import {Grant, PolicyStatement} from 'aws-cdk-lib/aws-iam';
 import type {IGrantable} from 'aws-cdk-lib/aws-iam';
+import {CfnCommand} from 'aws-cdk-lib/aws-iot';
 import {Architecture, Function, Runtime} from 'aws-cdk-lib/aws-lambda';
 import type {Code} from 'aws-cdk-lib/aws-lambda';
 import {LogGroup, RetentionDays} from 'aws-cdk-lib/aws-logs';
@@ -55,9 +56,45 @@ export const ADMIN_API_HANDLER =
 export const CONTROL_API_HANDLER =
   'tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest';
 
-/** The device shadows the control API reads; it writes only `stream`. */
-export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = ['helios', 'stream'];
+/**
+ * The device shadows the control API reads (`net` for the Wi-Fi networks); it
+ * writes only `stream`.
+ */
+export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = [
+  'helios',
+  'net',
+  'stream',
+];
 export const CONTROL_WRITE_SHADOWS: ReadonlyArray<string> = ['stream'];
+
+/**
+ * The Helios commands the control API sends as AWS IoT command executions
+ * (LLD 2, section 7.3): [module, name within the module].
+ */
+export const IOT_COMMANDS: ReadonlyArray<[string, string]> = [
+  ['net', 'wifi.set'],
+  ['net', 'wifi.remove'],
+];
+
+/** The AWS IoT command ID for a Helios command: `helios-net-wifi-set`. */
+export function commandId(module: string, name: string): string {
+  return `helios-${module}-${name.replace(/\./g, '-')}`;
+}
+
+/**
+ * Every Helios command's payload template: the module and name fixed, the
+ * execution's timeout, and the arguments as one base64 string of their JSON,
+ * so nothing in them needs escaping here. Placeholders sit in strings, since
+ * the template must be valid JSON before substitution.
+ */
+export function payloadTemplate(module: string, name: string): string {
+  return JSON.stringify({
+    module,
+    name,
+    timeout_s: '${aws:iot:commandexecution::executionTimeoutSec}',
+    args: '${aws:iot:commandexecution::parameter:args}',
+  });
+}
 
 /** The admin API routes provisioning needs: RegisterDevice and GetDevice. */
 export const PROVISIONING_ROUTES: ReadonlyArray<[string, string]> = [
@@ -222,9 +259,28 @@ export class BootstrapStack extends NestedStack {
       environment: {
         DEVICES_TABLE: this.devices.tableName,
         IOT_DATA_ENDPOINT: props.defaultAws.iotEndpoint,
+        // For the Helios commands' and things' ARNs.
+        IOT_ARN_PREFIX: `arn:${this.partition}:iot:${this.region}:${this.account}`,
         JAVA_TOOL_OPTIONS: '-XX:+TieredCompilation -XX:TieredStopAtLevel=1',
       },
     });
+    for (const [module, name] of IOT_COMMANDS) {
+      new CfnCommand(this, `Command-${commandId(module, name)}`, {
+        commandId: commandId(module, name),
+        namespace: 'AWS-IoT',
+        displayName: `Helios ${module}.${name}`,
+        description: `Helios's ${module}.${name} command, sent by the control API.`,
+        payloadTemplate: payloadTemplate(module, name),
+        preprocessor: {awsJsonSubstitution: {outputFormat: 'JSON'}},
+        mandatoryParameters: [
+          {
+            name: 'args',
+            type: 'STRING',
+            description: "The command's arguments: base64 of their JSON.",
+          },
+        ],
+      });
+    }
     this.grantControlApi();
 
     this.api = new RestApi(this, 'Api', {
@@ -282,6 +338,12 @@ export class BootstrapStack extends NestedStack {
     controlDevice.addMethod('GET', control, iam);
     controlDevice.addResource('inputs').addMethod('GET', control, iam);
     controlDevice.addResource('profiles').addMethod('GET', control, iam);
+    const wifiNetworks = controlDevice
+      .addResource('wifi')
+      .addResource('networks');
+    for (const method of ['GET', 'PUT', 'DELETE']) {
+      wifiNetworks.addMethod(method, control, iam);
+    }
     const streams = controlDevice.addResource('streams');
     streams.addMethod('GET', control, iam);
     const stream = streams.addResource('{streamId}');
@@ -321,7 +383,8 @@ export class BootstrapStack extends NestedStack {
 
   /**
    * Only what ControlService does: read device records (never write them),
-   * read the `helios` and `stream` shadows, and write the `stream` shadow.
+   * read the `helios`, `net` and `stream` shadows, write the `stream` shadow,
+   * and start and read executions of the Helios commands.
    */
   private grantControlApi(): void {
     const shadows = (names: ReadonlyArray<string>) =>
@@ -344,6 +407,23 @@ export class BootstrapStack extends NestedStack {
       new PolicyStatement({
         actions: ['iot:UpdateThingShadow'],
         resources: shadows(CONTROL_WRITE_SHADOWS),
+      }),
+      new PolicyStatement({
+        actions: ['iot:StartCommandExecution', 'iot:GetCommandExecution'],
+        resources: [
+          ...IOT_COMMANDS.map(([module, name]) =>
+            this.formatArn({
+              service: 'iot',
+              resource: 'command',
+              resourceName: commandId(module, name),
+            }),
+          ),
+          this.formatArn({
+            service: 'iot',
+            resource: 'thing',
+            resourceName: '*',
+          }),
+        ],
       }),
     ]) {
       this.controlApi.addToRolePolicy(statement);

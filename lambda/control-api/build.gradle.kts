@@ -5,7 +5,12 @@
 dependencies {
     implementation(project(":common"))
     implementation(platform(libs.aws.sdk.bom))
-    for (sdk in listOf(libs.aws.sdk.dynamodb, libs.aws.sdk.iotdataplane)) {
+    for (sdk in listOf(
+        libs.aws.sdk.dynamodb,
+        libs.aws.sdk.iot,
+        libs.aws.sdk.iotdataplane,
+        libs.aws.sdk.iotjobsdataplane,
+    )) {
         implementation(sdk) {
             // As in device-api: the JDK's HTTP client only.
             exclude(group = "software.amazon.awssdk", module = "netty-nio-client")

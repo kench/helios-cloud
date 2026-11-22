@@ -31,6 +31,7 @@ class ControlApiTest {
   private final List<String> audit = new ArrayList<>();
   private final List<String> errors = new ArrayList<>();
   private ControlApi api;
+  private final WifiControlTest.FakeCommands commands = new WifiControlTest.FakeCommands();
 
   @BeforeEach
   void setUp() {
@@ -55,6 +56,7 @@ class ControlApiTest {
   private ControlApi api(ControlService service) {
     return new ControlApi(
         service,
+        new WifiControl(devices, shadows, commands, Clock.systemUTC(), duration -> {}),
         audit::add,
         errors::add,
         Clock.fixed(Instant.parse("2026-11-21T23:00:00Z"), ZoneOffset.UTC));
@@ -88,6 +90,14 @@ class ControlApiTest {
             "SetStreamDestination", new String[] {"PUT", BASE + "/streams/pocket/destination"});
     routes.forEach((operation, route) ->
         assertEquals(operation, ControlApi.route(route[0], route[1]).orElseThrow().operation()));
+    for (String[] wifi :
+        new String[][] {
+          {"GET", "ListWifiNetworks"}, {"PUT", "SetWifiNetwork"}, {"DELETE", "DeleteWifiNetwork"}
+        }) {
+      ControlApi.Route route = ControlApi.route(wifi[0], BASE + "/wifi/networks").orElseThrow();
+      assertEquals(wifi[1], route.operation());
+      assertEquals(ID, route.deviceId());
+    }
     assertEquals(ID, ControlApi.route("GET", BASE + "/streams/pocket").orElseThrow().deviceId());
     assertEquals(
         "pocket", ControlApi.route("GET", BASE + "/streams/pocket").orElseThrow().streamId());
@@ -185,5 +195,44 @@ class ControlApiTest {
     assertFalse(response.body().contains("throttled"), "no detail in the body");
     assertTrue(errors.getLast().contains("throttled"), "but in the log");
     assertTrue(audit.getLast().contains("\"result\":\"InternalError\""));
+  }
+
+  @Test
+  void setsAndRemovesWifiNetworksAndAuditsTheSsidOnly() {
+    commands.answer(
+        new Commands.Execution(
+            "SUCCEEDED",
+            null,
+            null,
+            "{\"network\":{\"ssid\":\"Cafe\",\"security\":\"open\",\"hidden\":false}}"));
+    RestJson.Response set = call("PUT", BASE + "/wifi/networks", "{\"ssid\": \"Cafe\"}");
+    assertEquals(200, set.status(), set.body());
+    assertTrue(set.body().contains("\"security\":\"open\""), set.body());
+    assertTrue(audit.getLast().contains("\"ssid\":\"Cafe\""), audit.getLast());
+    assertTrue(audit.getLast().contains("\"operation\":\"SetWifiNetwork\""));
+
+    // A passphrase without the device's key: refused, and never in the audit log.
+    RestJson.Response refused =
+        call(
+            "PUT",
+            BASE + "/wifi/networks",
+            "{\"ssid\": \"Home\", \"passphrase\": \"correct horse battery\"}");
+    assertEquals(409, refused.status(), refused.body());
+    assertTrue(refused.body().contains("no_secrets_key"), refused.body());
+    assertFalse(String.join("\n", audit).contains("horse"));
+    assertFalse(String.join("\n", errors).contains("horse"));
+
+    commands.answer(new Commands.Execution("SUCCEEDED", null, null, "{\"removed\":true}"));
+    RestJson.Response removed =
+        call("DELETE", BASE + "/wifi/networks", "", Map.of("ssid", "Venue / Media"));
+    assertEquals(200, removed.status(), removed.body());
+    assertTrue(removed.body().contains("\"removed\":true"));
+    assertTrue(audit.getLast().contains("\"ssid\":\"Venue / Media\""), audit.getLast());
+
+    assertEquals(400, call("DELETE", BASE + "/wifi/networks", "").status(), "ssid is required");
+    assertEquals(409, call("GET", BASE + "/wifi/networks", "").status(), "no net shadow");
+    RestJson.Response weak =
+        call("PUT", BASE + "/wifi/networks", "{\"ssid\": \"Home\", \"passphrase\": \"short\"}");
+    assertEquals(400, weak.status(), "the model's rules: " + weak.body());
   }
 }

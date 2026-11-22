@@ -216,11 +216,22 @@ describe('BootstrapStack', () => {
         },
       },
     });
+    const control = Object.values(
+      template.findResources('AWS::Lambda::Function', {
+        Properties: {Handler: CONTROL_API_HANDLER},
+      }),
+    )[0];
+    expect(
+      resolveArns(
+        control['Properties']['Environment']['Variables']['IOT_ARN_PREFIX'],
+      ),
+    ).toBe(`arn:aws:iot:${REGION}:${ACCOUNT}`);
   });
 
-  it('lets the control API read devices and shadows and write only the stream shadow', () => {
+  it('lets the control API read devices and shadows, write only the stream shadow, and run only the Helios commands', () => {
     const template = synthesize();
     const thing = `arn:aws:iot:${REGION}:${ACCOUNT}:thing`;
+    const command = `arn:aws:iot:${REGION}:${ACCOUNT}:command`;
     expect(resolveArns(statementsOf(template, 'ControlApi'))).toEqual([
       {
         Action: ['dynamodb:GetItem', 'dynamodb:Scan'],
@@ -230,14 +241,56 @@ describe('BootstrapStack', () => {
       {
         Action: 'iot:GetThingShadow',
         Effect: 'Allow',
-        Resource: [`${thing}/*/helios`, `${thing}/*/stream`],
+        Resource: [`${thing}/*/helios`, `${thing}/*/net`, `${thing}/*/stream`],
       },
       {
         Action: 'iot:UpdateThingShadow',
         Effect: 'Allow',
         Resource: `${thing}/*/stream`,
       },
+      {
+        Action: ['iot:StartCommandExecution', 'iot:GetCommandExecution'],
+        Effect: 'Allow',
+        Resource: [
+          `${command}/helios-net-wifi-set`,
+          `${command}/helios-net-wifi-remove`,
+          `${thing}/*`,
+        ],
+      },
     ]);
+  });
+
+  it('defines the Helios commands with one payload template', () => {
+    const template = synthesize();
+    const commands = Object.values(template.findResources('AWS::IoT::Command'));
+    expect(commands.map(c => c['Properties']['CommandId']).sort()).toEqual([
+      'helios-net-wifi-remove',
+      'helios-net-wifi-set',
+    ]);
+    for (const command of commands) {
+      const properties = command['Properties'];
+      expect(properties['Namespace']).toBe('AWS-IoT');
+      expect(properties['Preprocessor']).toEqual({
+        AwsJsonSubstitution: {OutputFormat: 'JSON'},
+      });
+      expect(properties['MandatoryParameters']).toEqual([
+        {
+          Name: 'args',
+          Type: 'STRING',
+          Description: "The command's arguments: base64 of their JSON.",
+        },
+      ]);
+      const payload = JSON.parse(properties['PayloadTemplate']);
+      expect(payload).toEqual({
+        module: 'net',
+        name:
+          properties['CommandId'] === 'helios-net-wifi-set'
+            ? 'wifi.set'
+            : 'wifi.remove',
+        timeout_s: '${aws:iot:commandexecution::executionTimeoutSec}',
+        args: '${aws:iot:commandexecution::parameter:args}',
+      });
+    }
   });
 
   it('leaves the device routes open and signs the admin and control routes with IAM', () => {
@@ -258,8 +311,12 @@ describe('BootstrapStack', () => {
         // Device.
         ['POST', 'NONE'],
         ['POST', 'NONE'],
-        // Control: six reads, an update, start, stop and the destination.
+        // Control: seven reads, an update, start, stop, the destination, and
+        // setting and removing a Wi-Fi network.
         ['GET', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['PUT', 'AWS_IAM'],
+        ['DELETE', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
@@ -292,6 +349,8 @@ describe('BootstrapStack', () => {
         '{deviceId}',
         'inputs',
         'profiles',
+        'wifi',
+        'networks',
         'streams',
         '{streamId}',
         'start',
