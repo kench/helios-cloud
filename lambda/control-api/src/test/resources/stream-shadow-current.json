@@ -1,0 +1,27 @@
+{
+  "state": {
+    "desired": {"streams": {"pocket": {"state": "live"}}},
+    "reported": {
+      "streams": {
+        "pocket": {
+          "state": "live",
+          "since": "2026-11-21T22:40:00.000Z",
+          "desired": "live",
+          "source": {"type": "rtmp", "key": "ingest", "publisher": "192.168.5.84"},
+          "profile": "hevc",
+          "bitrate_kbps": 6000,
+          "bitrate_override_kbps": null,
+          "source_kbps": 3812,
+          "bitrate_ceiling_kbps": null,
+          "encoder": null,
+          "output": "kenley",
+          "last_error": null
+        }
+      },
+      "outputs": {"kenley": {"state": "direct"}},
+      "rtmp_ingest": {"state": "ok", "publishers": {"ingest": {"address": "192.168.5.84"}}, "last_error": null}
+    }
+  },
+  "version": 41,
+  "timestamp": 1795332000
+}

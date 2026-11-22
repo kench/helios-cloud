@@ -62,6 +62,16 @@ describe('OperatorStack', () => {
         Effect: 'Allow',
         Resource: `${IOT}:topic/helios/*/rsp/*`,
       },
+      {
+        // The control API's routes, and no other route of the bootstrap API.
+        Action: 'execute-api:Invoke',
+        Effect: 'Allow',
+        Resource: expect.stringMatching(
+          new RegExp(
+            `^arn:aws:execute-api:${REGION}:${ACCOUNT}:.+/dev/\\*/v1/control/\\*$`,
+          ),
+        ),
+      },
     ]);
   });
 });

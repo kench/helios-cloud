@@ -17,6 +17,7 @@ aws-lambda-core = { module = "com.amazonaws:aws-lambda-java-core", version.ref =
 aws-lambda-events = { module = "com.amazonaws:aws-lambda-java-events", version.ref = "aws-lambda-events" }
 aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
 aws-sdk-dynamodb = { module = "software.amazon.awssdk:dynamodb" }
+aws-sdk-iotdataplane = { module = "software.amazon.awssdk:iotdataplane" }
 aws-sdk-url-connection-client = { module = "software.amazon.awssdk:url-connection-client" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

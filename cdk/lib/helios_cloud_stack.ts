@@ -34,6 +34,8 @@ export interface HeliosCloudStackProps extends StackProps {
   readonly deviceApiCode: Code;
   /** The admin API Lambda's deployment package. */
   readonly adminApiCode: Code;
+  /** The control API Lambda's deployment package. */
+  readonly controlApiCode: Code;
   /** The account's AWS IoT endpoints. */
   readonly iotEndpoints: IotEndpoints;
 }
@@ -67,6 +69,7 @@ export class HeliosCloudStack extends Stack {
     this.bootstrap = new BootstrapStack(this, 'Bootstrap', {
       deviceApiCode: props.deviceApiCode,
       adminApiCode: props.adminApiCode,
+      controlApiCode: props.controlApiCode,
       defaultAws: {
         iotEndpoint: props.iotEndpoints.data,
         credentialsEndpoint: props.iotEndpoints.credentials,
@@ -78,6 +81,9 @@ export class HeliosCloudStack extends Stack {
 
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
+
+    // Operators control devices' streams through the control API.
+    this.bootstrap.grantControl(this.operator.operatorRole);
 
     // TEMPORARY: the provisioning role can also send commands, so that a
     // freshly provisioned scanner can be checked end to end (helios.ping)

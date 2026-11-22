@@ -3,12 +3,19 @@ import {Match, Template} from 'aws-cdk-lib/assertions';
 import {
   ADMIN_API_HANDLER,
   BOOTSTRAP_STAGE,
+  CONTROL_API_HANDLER,
   DEVICE_API_HANDLER,
   THROTTLE_BURST,
   THROTTLE_RATE_PER_SECOND,
 } from '../lib/bootstrap_stack';
 import {DEVICE_ROLE_ALIAS_NAME} from '../lib/device_identity_stack';
-import {IOT_ENDPOINTS, testStack} from './test_stack';
+import {
+  ACCOUNT,
+  IOT_ENDPOINTS,
+  REGION,
+  resolveArns,
+  testStack,
+} from './test_stack';
 
 function synthesize(): Template {
   return Template.fromStack(testStack().bootstrap);
@@ -192,10 +199,48 @@ describe('BootstrapStack', () => {
         },
       },
     });
-    template.resourceCountIs('AWS::Logs::LogGroup', 2);
+    template.resourceCountIs('AWS::Logs::LogGroup', 3);
   });
 
-  it('leaves the device routes open and signs the admin routes with IAM', () => {
+  it('runs the control API on java25 with its own 30-day log', () => {
+    const template = synthesize();
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Runtime: 'java25',
+      Architectures: ['arm64'],
+      Handler: CONTROL_API_HANDLER,
+      Timeout: 15,
+      Environment: {
+        Variables: {
+          DEVICES_TABLE: {Ref: tableKeyedBy(template, 'deviceId')},
+          IOT_DATA_ENDPOINT: IOT_ENDPOINTS.data,
+        },
+      },
+    });
+  });
+
+  it('lets the control API read devices and shadows and write only the stream shadow', () => {
+    const template = synthesize();
+    const thing = `arn:aws:iot:${REGION}:${ACCOUNT}:thing`;
+    expect(resolveArns(statementsOf(template, 'ControlApi'))).toEqual([
+      {
+        Action: ['dynamodb:GetItem', 'dynamodb:Scan'],
+        Effect: 'Allow',
+        Resource: {'Fn::GetAtt': [tableKeyedBy(template, 'deviceId'), 'Arn']},
+      },
+      {
+        Action: 'iot:GetThingShadow',
+        Effect: 'Allow',
+        Resource: [`${thing}/*/helios`, `${thing}/*/stream`],
+      },
+      {
+        Action: 'iot:UpdateThingShadow',
+        Effect: 'Allow',
+        Resource: `${thing}/*/stream`,
+      },
+    ]);
+  });
+
+  it('leaves the device routes open and signs the admin and control routes with IAM', () => {
     const template = synthesize();
     const methods = Object.values(
       template.findResources('AWS::ApiGateway::Method'),
@@ -205,11 +250,24 @@ describe('BootstrapStack', () => {
     ]);
     expect(methods.sort()).toEqual(
       [
+        // Admin.
         ['DELETE', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['POST', 'AWS_IAM'],
+        ['PUT', 'AWS_IAM'],
+        // Device.
         ['POST', 'NONE'],
         ['POST', 'NONE'],
+        // Control: six reads, an update, start, stop and the destination.
+        ['GET', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['GET', 'AWS_IAM'],
+        ['PATCH', 'AWS_IAM'],
+        ['POST', 'AWS_IAM'],
+        ['POST', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],
       ].sort(),
     );
@@ -229,6 +287,16 @@ describe('BootstrapStack', () => {
         'devices',
         '{deviceId}',
         'status',
+        'control',
+        'devices',
+        '{deviceId}',
+        'inputs',
+        'profiles',
+        'streams',
+        '{streamId}',
+        'start',
+        'stop',
+        'destination',
       ].sort(),
     );
   });
@@ -250,7 +318,7 @@ describe('BootstrapStack', () => {
   it("doesn't change the account-wide API Gateway settings", () => {
     const template = synthesize();
     template.resourceCountIs('AWS::ApiGateway::Account', 0);
-    // Only the two functions' roles.
-    template.resourceCountIs('AWS::IAM::Role', 2);
+    // Only the three functions' roles.
+    template.resourceCountIs('AWS::IAM::Role', 3);
   });
 });

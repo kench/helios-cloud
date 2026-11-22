@@ -23,12 +23,15 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   MQTT, connecting with a client ID that starts with `helios-operator-` (LLD 2, section 7.2).
 
 - `Bootstrap`: the bootstrap service (Bootstrap API, section 7). The device API Lambda (`java25`,
-  ARM64) and the admin API Lambda behind a regional REST API, with the `devices`, `mac_index` and `challenges` DynamoDB
+  ARM64), the admin API Lambda and the control API Lambda (HLD section 7.3) behind one regional
+  REST API, with the `devices`, `mac_index` and `challenges` DynamoDB
   tables. For now it uses the API's default `execute-api` domain (stage `dev`), keeps PINs in the
   `devices` table under DynamoDB's encryption at rest, and is protected only by stage throttling
   (10 requests a second, bursts of 20). The stack output `BootstrapUrl` is the value for Helios's
   `bootstrap.url`. The device routes are open; the admin routes (`/v1/admin/devices…`) need a
-  SigV4 signature, and `helios-provisioning` may call `RegisterDevice` and `GetDevice` only.
+  SigV4 signature, and `helios-provisioning` may call `RegisterDevice` and `GetDevice` only. The
+  control routes (`/v1/control/…`) need a SigV4 signature too, and `helios-operator` may call
+  them all.
 - `AptRepository`: the public APT repository the Debian devices (relay and transcoder) install
   Helios from. A private, versioned S3 bucket in the account-regional namespace
   (`helios-apt-<account>-<region>-an`; replaced versions kept 30 days) behind a CloudFront
@@ -54,6 +57,7 @@ lambda/               the Lambdas (Java 25, Gradle)
   common/               shared by the Lambdas: restJson1 over API Gateway, IDs, log lines, keys
   device-api/           the device API Lambda: Bootstrap and AnswerChallenge
   admin-api/            the admin API Lambda: RegisterDevice, GetDevice, SetDeviceStatus, DeleteDevice
+  control-api/          the control API Lambda: devices, inputs, profiles and streams for operators
 cdk/                  CDK app (TypeScript), generated with `cdk init app --language typescript`
   bin/helios_cloud.ts   entry point: the HeliosCloud stack in us-west-2
   lib/                  the stack and its nested stacks
@@ -112,8 +116,11 @@ cd lambda
 ./gradlew spotlessApply # apply google-java-format
 ```
 
-`lambda/model` generates Java types for the Bootstrap API from the Smithy model in `contract/`
-with Smithy Java's type code generation (`smithy-build.json`). Its test reads every protocol test
+`lambda/model` generates Java types for the Bootstrap and Control APIs from the Smithy model in
+`contract/` with Smithy Java's type code generation (`smithy-build.json`): the Bootstrap API's in
+`tv.kenley.helios.cloud.model`, and the Control API's (namespace `tv.kenley.helios.control`,
+projection `control`) in `tv.kenley.helios.cloud.control.model`, since both have shapes such as
+`GetDeviceInput`. Each projection has a selector; their `SchemaIndex` service files are merged. Its test reads every protocol test
 in the model and checks that each body round-trips through the generated types. Generated code
 is excluded from Checkstyle, Spotless and coverage.
 
@@ -134,6 +141,17 @@ handler is `tv.kenley.helios.cloud.admin.AdminApiHandler::handleRequest`, and
 deletion are DynamoDB transactions over the device record and its `mac_index` entries, so a MAC
 never belongs to two records. Responses never include the PIN, and each call writes an audit line
 with the caller's IAM ARN.
+
+`lambda/control-api` is the control API Lambda (HLD section 7.3), under `/v1/control`, IAM-signed;
+callers assume `helios-operator` (`grantControl`). Its handler is
+`tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest`, and
+`./gradlew :control-api:lambdaZip` builds `control-api/build/lambda/control-api.zip`. It reads the
+devices table (never writing it, and never reading PINs), reads the `helios` and `stream` shadows,
+and changes streams by writing the `stream` shadow's desired state (HLD section 7.3.7 lists the
+fields); the device applies them and reports back. Changes answer 202 with the shadow version.
+Destinations are SRT or SRTLA URLs only, checked by `Destinations.java` and stored in a normal
+form. Each call writes an audit line with the caller's IAM ARN, and a destination change also
+records the new destination. `GetStreamStatus` (a command with a response) isn't routed yet.
 
 ## Standards
 

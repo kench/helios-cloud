@@ -14,7 +14,27 @@
         "smithy.api#httpError",
         "smithy.api#httpHeader",
         "smithy.api#httpPayload"
-      ]
+      ],
+      "selector": ":is([id|namespace = 'tv.kenley.helios.contract'], [id|namespace = 'tv.kenley.helios.contract'] ~> *)"
+    }
+  },
+  "projections": {
+    "control": {
+      "plugins": {
+        "java-codegen": {
+          "service": "tv.kenley.helios.control#HeliosControl",
+          "namespace": "tv.kenley.helios.cloud.control",
+          "modes": [
+            "types"
+          ],
+          "runtimeTraits": [
+            "smithy.api#httpError",
+            "smithy.api#httpHeader",
+            "smithy.api#httpPayload"
+          ],
+          "selector": ":is([id|namespace = 'tv.kenley.helios.control'], [id|namespace = 'tv.kenley.helios.control'] ~> *)"
+        }
+      }
     }
   }
 }

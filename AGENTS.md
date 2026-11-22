@@ -15,7 +15,7 @@ instructions (read the construct READMEs first, style, checks).
 | DeviceIdentity | `cdk/lib/device_identity_stack.ts` | `helios-device-policy`, the device role and `helios-device-role-alias` |
 | Provisioning | `cdk/lib/provisioning_stack.ts` | `helios-provisioning` role and `helios-provisioner` user |
 | Operator | `cdk/lib/operator_stack.ts` | `helios-operator` role for device commands |
-| Bootstrap | `cdk/lib/bootstrap_stack.ts` | Device and admin APIs (REST API, java25 ARM64 Lambdas, DynamoDB) |
+| Bootstrap | `cdk/lib/bootstrap_stack.ts` | Device, admin and control APIs (one REST API, java25 ARM64 Lambdas, DynamoDB) |
 | AptRepository | `cdk/lib/apt_repository_stack.ts` | Helios APT repository (S3 + CloudFront) and `helios-apt-publisher` for helios's `v*` tags |
 
 ## Check your work
