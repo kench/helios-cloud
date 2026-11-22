@@ -138,6 +138,40 @@ class StreamShadowTest {
   }
 
   @Test
+  void testPatternIgnoresTheDefaultsTheDeviceFillsIn() {
+    StreamShadow s =
+        new StreamShadow(
+            ShadowJson.parse(
+                """
+                {"state": {"reported": {"streams": {
+                  "bars": {"desired": "stopped",
+                           "source": {"type": "test", "size": "1280x720", "fps": 30}},
+                  "cam": {"desired": "stopped",
+                          "source": {"type": "camera", "video": "usb:1-1", "audio": "usb:1-2",
+                                     "product": "C920"}}}}}}
+                """
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    assertFalse(s.streamWith("bars", Map.of("source", Map.of("type", "test"))).isPending());
+    assertFalse(
+        s.streamWith("bars", Map.of("source", Map.of("type", "test", "fps", 30))).isPending());
+    assertTrue(
+        s.streamWith("bars", Map.of("source", Map.of("type", "test", "fps", 25))).isPending());
+    assertTrue(
+        s.streamWith("bars", Map.of("source", Map.of("type", "test", "size", "640x360")))
+            .isPending());
+    assertTrue(
+        s.streamWith("bars", Map.of("source", Map.of("type", "camera", "video", "usb:1-1")))
+            .isPending());
+    Map<String, Object> both = Map.of("type", "camera", "video", "usb:1-1", "audio", "usb:1-2");
+    assertFalse(s.streamWith("cam", Map.of("source", both)).isPending(), "details don't count");
+    assertTrue(
+        s.streamWith("cam", Map.of("source", Map.of("type", "camera", "video", "usb:1-1")))
+            .isPending(),
+        "no audio is a different source");
+    assertTrue(s.streamWith("cam", Map.of("source", Map.of("type", "test"))).isPending());
+  }
+
+  @Test
   void readsInputsAndSkipsWhatItCant() {
     StreamShadow s = shadow("stream-shadow-control.json");
     List<Input> inputs = s.inputs();
