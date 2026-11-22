@@ -146,12 +146,25 @@ with the caller's IAM ARN.
 callers assume `helios-operator` (`grantControl`). Its handler is
 `tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest`, and
 `./gradlew :control-api:lambdaZip` builds `control-api/build/lambda/control-api.zip`. It reads the
-devices table (never writing it, and never reading PINs), reads the `helios` and `stream` shadows,
+devices table (never writing it, and never reading PINs), reads the `helios`, `net` and `stream` shadows,
 and changes streams by writing the `stream` shadow's desired state (HLD section 7.3.7 lists the
 fields); the device applies them and reports back. Changes answer 202 with the shadow version.
 Destinations are SRT or SRTLA URLs only, checked by `Destinations.java` and stored in a normal
 form. Each call writes an audit line with the caller's IAM ARN, and a destination change also
 records the new destination. `GetStreamStatus` (a command with a response) isn't routed yet.
+
+Wi-Fi networks (LLD 3, section 10): `ListWifiNetworks` reads the `net` shadow; `SetWifiNetwork`
+and `DeleteWifiNetwork` are **AWS IoT command executions**, not shadow writes (LLD 2, section
+7.3): the stack defines the commands `helios-net-wifi-set` and `helios-net-wifi-remove` (one payload
+template: `{"module", "name", "timeout_s", "args"}`, `args` base64 of the arguments' JSON), the
+Lambda starts an execution (10 s timeout) and polls for the device's answer, and a device that
+doesn't answer gives `DeviceUnreachable`. A passphrase is **sealed to the device** first, because
+AWS keeps executions: HPKE (RFC 9180; DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, AES-128-GCM) to the
+`secrets_key` in its `helios` shadow, `info` `helios secret v1 <thing>`, AAD
+`wifi.passphrase <ssid>` (`Sealing.java`, JDK primitives only, checked against RFC 9180's
+vectors). The plaintext is never stored or logged; the audit line has the SSID. The device policy
+allows the `$aws/commands/things/<thing>/executions/…` topics, and the Lambda may start and read
+executions of only those two commands.
 
 ## Standards
 

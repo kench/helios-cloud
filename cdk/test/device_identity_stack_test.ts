@@ -10,6 +10,7 @@ import {ACCOUNT, REGION, resolveArns, testStack} from './test_stack';
 const IOT = `arn:aws:iot:${REGION}:${ACCOUNT}`;
 const THING = '${iot:Connection.Thing.ThingName}';
 const SHADOWS = `$aws/things/${THING}/shadow/name/*`;
+const EXECUTIONS = `$aws/commands/things/${THING}/executions`;
 
 function synthesize(): Template {
   return Template.fromStack(testStack().deviceIdentity);
@@ -101,6 +102,7 @@ describe('DeviceIdentityStack', () => {
           `${IOT}:topic/helios/${THING}/evt/*`,
           `${IOT}:topic/${SHADOWS}/get`,
           `${IOT}:topic/${SHADOWS}/update`,
+          `${IOT}:topic/${EXECUTIONS}/*/response/json`,
         ],
       },
       {
@@ -110,6 +112,9 @@ describe('DeviceIdentityStack', () => {
           `${IOT}:topicfilter/helios/${THING}/cmd/*`,
           `${IOT}:topicfilter/${SHADOWS}/get/*`,
           `${IOT}:topicfilter/${SHADOWS}/update/*`,
+          `${IOT}:topicfilter/${EXECUTIONS}/*/request/json`,
+          `${IOT}:topicfilter/${EXECUTIONS}/*/response/accepted/json`,
+          `${IOT}:topicfilter/${EXECUTIONS}/*/response/rejected/json`,
         ],
       },
       {
@@ -119,6 +124,9 @@ describe('DeviceIdentityStack', () => {
           `${IOT}:topic/helios/${THING}/cmd/*`,
           `${IOT}:topic/${SHADOWS}/get/*`,
           `${IOT}:topic/${SHADOWS}/update/*`,
+          `${IOT}:topic/${EXECUTIONS}/*/request/json`,
+          `${IOT}:topic/${EXECUTIONS}/*/response/accepted/json`,
+          `${IOT}:topic/${EXECUTIONS}/*/response/rejected/json`,
         ],
       },
       {

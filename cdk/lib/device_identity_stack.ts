@@ -47,6 +47,9 @@ const CREDENTIALS_THING = '${credentials-iot:ThingName}';
 /** The modules' named shadows, under `$aws/things/<thing>/shadow/name/`. */
 const SHADOWS = `$aws/things/${IOT_THING}/shadow/name/*`;
 
+/** The device's AWS IoT command executions (LLD 2, section 7.3). */
+const EXECUTIONS = `$aws/commands/things/${IOT_THING}/executions`;
+
 /**
  * The nested stack for device identity. Each device can use only its own
  * client ID, topics and shadows, and its credentials can read only its own
@@ -126,6 +129,7 @@ export class DeviceIdentityStack extends NestedStack {
             iot('topic', `helios/${IOT_THING}/evt/*`),
             iot('topic', `${SHADOWS}/get`),
             iot('topic', `${SHADOWS}/update`),
+            iot('topic', `${EXECUTIONS}/*/response/json`),
           ],
         }),
         // Commands, and the shadow service's replies and desired-state
@@ -137,6 +141,9 @@ export class DeviceIdentityStack extends NestedStack {
             iot('topicfilter', `helios/${IOT_THING}/cmd/*`),
             iot('topicfilter', `${SHADOWS}/get/*`),
             iot('topicfilter', `${SHADOWS}/update/*`),
+            iot('topicfilter', `${EXECUTIONS}/*/request/json`),
+            iot('topicfilter', `${EXECUTIONS}/*/response/accepted/json`),
+            iot('topicfilter', `${EXECUTIONS}/*/response/rejected/json`),
           ],
         }),
         new PolicyStatement({
@@ -146,6 +153,9 @@ export class DeviceIdentityStack extends NestedStack {
             iot('topic', `helios/${IOT_THING}/cmd/*`),
             iot('topic', `${SHADOWS}/get/*`),
             iot('topic', `${SHADOWS}/update/*`),
+            iot('topic', `${EXECUTIONS}/*/request/json`),
+            iot('topic', `${EXECUTIONS}/*/response/accepted/json`),
+            iot('topic', `${EXECUTIONS}/*/response/rejected/json`),
           ],
         }),
         // Temporary AWS credentials from the credentials provider.
