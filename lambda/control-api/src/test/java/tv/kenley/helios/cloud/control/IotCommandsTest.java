@@ -39,11 +39,11 @@ class IotCommandsTest {
         });
     IotCommands commands = new IotCommands(data, mock(IotClient.class), PREFIX);
 
-    assertEquals("exec-1", commands.start("t-1", "helios-net-wifi-set", "e30=", 10));
+    assertEquals("exec-1", commands.start("t-1", "helios-net-wifi-set-v1", "e30=", 10));
 
     StartCommandExecutionRequest request = sent.get();
     assertEquals(PREFIX + ":thing/t-1", request.targetArn());
-    assertEquals(PREFIX + ":command/helios-net-wifi-set", request.commandArn());
+    assertEquals(PREFIX + ":command/helios-net-wifi-set-v1", request.commandArn());
     assertEquals(10L, request.executionTimeoutSeconds());
     assertEquals("e30=", request.parameters().get("args").s());
   }

@@ -155,7 +155,7 @@ records the new destination. `GetStreamStatus` (a command with a response) isn't
 
 Wi-Fi networks (LLD 3, section 10): `ListWifiNetworks` reads the `net` shadow; `SetWifiNetwork`
 and `DeleteWifiNetwork` are **AWS IoT command executions**, not shadow writes (LLD 2, section
-7.3): the stack defines the commands `helios-net-wifi-set` and `helios-net-wifi-remove` (one payload
+7.3): the stack defines the commands `helios-net-wifi-set-v1` and `helios-net-wifi-remove-v1` (versioned, since AWS can't change a command's payload in place and holds a deleted ID for 12 hours; one payload
 template: `{"module", "name", "timeout_s", "args"}`, `args` base64 of the arguments' JSON), the
 Lambda starts an execution (10 s timeout) and polls for the device's answer, and a device that
 doesn't answer gives `DeviceUnreachable`. A passphrase is **sealed to the device** first, because

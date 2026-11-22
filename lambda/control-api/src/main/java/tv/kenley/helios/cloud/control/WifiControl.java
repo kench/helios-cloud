@@ -31,8 +31,8 @@ import tv.kenley.helios.cloud.control.model.WifiSecurity;
  */
 final class WifiControl {
   static final String NET_SHADOW = "net";
-  static final String SET_COMMAND = "helios-net-wifi-set";
-  static final String REMOVE_COMMAND = "helios-net-wifi-remove";
+  static final String SET_COMMAND = "helios-net-wifi-set-v1";
+  static final String REMOVE_COMMAND = "helios-net-wifi-remove-v1";
 
   /** The execution's timeout: well inside API Gateway's 29 s and the Lambda's 15 s. */
   static final int TIMEOUT_SECONDS = 10;
