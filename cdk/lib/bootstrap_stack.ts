@@ -104,10 +104,16 @@ export function payloadTemplate(module: string, name: string): string {
   });
 }
 
-/** The admin API routes provisioning needs: RegisterDevice and GetDevice. */
+/**
+ * The admin API routes provisioning needs: RegisterDevice and GetDevice, and,
+ * to re-provision a registered device (a new token for the same thing and
+ * device ID), SetDevicePin and PutChallengeKey.
+ */
 export const PROVISIONING_ROUTES: ReadonlyArray<[string, string]> = [
   ['POST', '/v1/admin/devices'],
   ['GET', '/v1/admin/devices/*'],
+  ['PUT', '/v1/admin/devices/*/pin'],
+  ['PUT', '/v1/admin/devices/*/challenge-key'],
 ];
 
 /**
@@ -366,7 +372,8 @@ export class BootstrapStack extends NestedStack {
 
   /**
    * Lets {@code grantee} call the admin routes provisioning needs
-   * (RegisterDevice and GetDevice), and no others.
+   * (RegisterDevice, GetDevice, SetDevicePin and PutChallengeKey), and no
+   * others.
    */
   grantProvisioning(grantee: IGrantable): Grant {
     return Grant.addToPrincipal({
