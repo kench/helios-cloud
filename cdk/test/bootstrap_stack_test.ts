@@ -252,8 +252,8 @@ describe('BootstrapStack', () => {
         Action: ['iot:StartCommandExecution', 'iot:GetCommandExecution'],
         Effect: 'Allow',
         Resource: [
-          `${command}/helios-net-wifi-set`,
-          `${command}/helios-net-wifi-remove`,
+          `${command}/helios-net-wifi-set-v1`,
+          `${command}/helios-net-wifi-remove-v1`,
           `${thing}/*`,
         ],
       },
@@ -264,8 +264,8 @@ describe('BootstrapStack', () => {
     const template = synthesize();
     const commands = Object.values(template.findResources('AWS::IoT::Command'));
     expect(commands.map(c => c['Properties']['CommandId']).sort()).toEqual([
-      'helios-net-wifi-remove',
-      'helios-net-wifi-set',
+      'helios-net-wifi-remove-v1',
+      'helios-net-wifi-set-v1',
     ]);
     for (const command of commands) {
       const properties = command['Properties'];
@@ -284,7 +284,7 @@ describe('BootstrapStack', () => {
       expect(payload).toEqual({
         module: 'net',
         name:
-          properties['CommandId'] === 'helios-net-wifi-set'
+          properties['CommandId'] === 'helios-net-wifi-set-v1'
             ? 'wifi.set'
             : 'wifi.remove',
         timeout_s: '${aws:iot:commandexecution::executionTimeoutSec}',

@@ -76,9 +76,17 @@ export const IOT_COMMANDS: ReadonlyArray<[string, string]> = [
   ['net', 'wifi.remove'],
 ];
 
-/** The AWS IoT command ID for a Helios command: `helios-net-wifi-set`. */
+/**
+ * The version of every Helios command's AWS IoT definition, in its ID. A new
+ * payload template means a new version: AWS can't change a command's payload in
+ * place, and keeps a deleted command's ID for 12 hours (the first deploy's
+ * rollback left `helios-net-wifi-set` taken).
+ */
+export const COMMAND_VERSION = 'v1';
+
+/** The AWS IoT command ID for a Helios command: `helios-net-wifi-set-v1`. */
 export function commandId(module: string, name: string): string {
-  return `helios-${module}-${name.replace(/\./g, '-')}`;
+  return `helios-${module}-${name.replace(/\./g, '-')}-${COMMAND_VERSION}`;
 }
 
 /**
