@@ -78,14 +78,19 @@ describe('ProvisioningStack', () => {
         Effect: 'Allow',
         Resource: `${IOT}:cert/*`,
       },
-      // RegisterDevice and GetDevice on the bootstrap admin API, and nothing
-      // else there (BootstrapStack.grantProvisioning).
+      // RegisterDevice, GetDevice, SetDevicePin and PutChallengeKey on the
+      // bootstrap admin API, and nothing else there (no DeleteDevice,
+      // UpdateDevice or SetDeviceStatus: BootstrapStack.grantProvisioning).
       {
         Action: 'execute-api:Invoke',
         Effect: 'Allow',
         Resource: [
           expect.stringMatching(apiRoute('POST', '/v1/admin/devices')),
           expect.stringMatching(apiRoute('GET', '/v1/admin/devices/\\*')),
+          expect.stringMatching(apiRoute('PUT', '/v1/admin/devices/\\*/pin')),
+          expect.stringMatching(
+            apiRoute('PUT', '/v1/admin/devices/\\*/challenge-key'),
+          ),
         ],
       },
       // Temporary: commands, as for helios-operator (HeliosCloudStack).
