@@ -21,6 +21,7 @@ export function testStack(): HeliosCloudStack {
     env: {account: ACCOUNT, region: REGION},
     deviceApiCode: Code.fromAsset(join(__dirname, 'fixtures', 'lambda')),
     adminApiCode: Code.fromAsset(join(__dirname, 'fixtures', 'lambda')),
+    controlApiCode: Code.fromAsset(join(__dirname, 'fixtures', 'lambda')),
     iotEndpoints: IOT_ENDPOINTS,
   });
 }

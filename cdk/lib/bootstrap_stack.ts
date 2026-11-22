@@ -1,7 +1,9 @@
 /**
- * @fileoverview The bootstrap service (Bootstrap API, section 7): the device
- * and admin API Lambdas behind an API Gateway REST API, and the DynamoDB
- * tables for device records, the MAC index and challenges.
+ * @fileoverview The bootstrap service (Bootstrap API, section 7): the device,
+ * admin and control API Lambdas behind one API Gateway REST API, and the
+ * DynamoDB tables for device records, the MAC index and challenges. The
+ * control API (HLD section 7.3) lives here, under /v1/control, so the three
+ * share one endpoint, stage and (later) domain and WAF.
  *
  * Temporary simplifications (Bootstrap API, section 7): the API uses its
  * default execute-api domain (no custom domain or ACM certificate), PINs are
@@ -49,6 +51,14 @@ export const DEVICE_API_HANDLER =
 export const ADMIN_API_HANDLER =
   'tv.kenley.helios.cloud.admin.AdminApiHandler::handleRequest';
 
+/** The control API Lambda's handler (lambda/control-api). */
+export const CONTROL_API_HANDLER =
+  'tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest';
+
+/** The device shadows the control API reads; it writes only `stream`. */
+export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = ['helios', 'stream'];
+export const CONTROL_WRITE_SHADOWS: ReadonlyArray<string> = ['stream'];
+
 /** The admin API routes provisioning needs: RegisterDevice and GetDevice. */
 export const PROVISIONING_ROUTES: ReadonlyArray<[string, string]> = [
   ['POST', '/v1/admin/devices'],
@@ -80,6 +90,8 @@ export interface BootstrapStackProps extends NestedStackProps {
   readonly deviceApiCode: Code;
   /** The admin API's deployment package (`gradlew :admin-api:lambdaZip`). */
   readonly adminApiCode: Code;
+  /** The control API's deployment package (`gradlew :control-api:lambdaZip`). */
+  readonly controlApiCode: Code;
   /** AWS settings for devices whose record has none. */
   readonly defaultAws: DefaultAwsSettings;
 }
@@ -100,6 +112,9 @@ export class BootstrapStack extends NestedStack {
 
   /** The admin API Lambda. */
   readonly adminApi: Function;
+
+  /** The control API Lambda. */
+  readonly controlApi: Function;
 
   /** The REST API. */
   readonly api: RestApi;
@@ -190,6 +205,28 @@ export class BootstrapStack extends NestedStack {
     });
     this.grantAdminApi();
 
+    this.controlApi = new Function(this, 'ControlApi', {
+      description:
+        'Helios control API: devices and their streams (ListDevices, StartStream, ...)',
+      runtime: Runtime.JAVA_25,
+      architecture: Architecture.ARM_64,
+      handler: CONTROL_API_HANDLER,
+      code: props.controlApiCode,
+      memorySize: 1024,
+      timeout: Duration.seconds(15),
+      // Its own log group: the control audit log, with the caller of each
+      // call and every destination change.
+      logGroup: new LogGroup(this, 'ControlApiLogs', {
+        retention: RetentionDays.ONE_MONTH,
+      }),
+      environment: {
+        DEVICES_TABLE: this.devices.tableName,
+        IOT_DATA_ENDPOINT: props.defaultAws.iotEndpoint,
+        JAVA_TOOL_OPTIONS: '-XX:+TieredCompilation -XX:TieredStopAtLevel=1',
+      },
+    });
+    this.grantControlApi();
+
     this.api = new RestApi(this, 'Api', {
       restApiName: 'helios-bootstrap',
       description: 'Helios bootstrap service (Bootstrap API)',
@@ -231,6 +268,29 @@ export class BootstrapStack extends NestedStack {
     device.addMethod('DELETE', admin, iam);
     device.addResource('status').addMethod('PUT', admin, iam);
 
+    // Control routes (HLD section 7.3): SigV4 too; callers assume
+    // helios-operator (grantControl).
+    const control = new LambdaIntegration(this.controlApi, {
+      allowTestInvoke: false,
+    });
+    const controlDevices = this.api.root
+      .getResource('v1')!
+      .addResource('control')
+      .addResource('devices');
+    controlDevices.addMethod('GET', control, iam);
+    const controlDevice = controlDevices.addResource('{deviceId}');
+    controlDevice.addMethod('GET', control, iam);
+    controlDevice.addResource('inputs').addMethod('GET', control, iam);
+    controlDevice.addResource('profiles').addMethod('GET', control, iam);
+    const streams = controlDevice.addResource('streams');
+    streams.addMethod('GET', control, iam);
+    const stream = streams.addResource('{streamId}');
+    stream.addMethod('GET', control, iam);
+    stream.addMethod('PATCH', control, iam);
+    stream.addResource('start').addMethod('POST', control, iam);
+    stream.addResource('stop').addMethod('POST', control, iam);
+    stream.addResource('destination').addMethod('PUT', control, iam);
+
     this.bootstrapUrl = `${this.api.url}v1`;
   }
 
@@ -246,6 +306,48 @@ export class BootstrapStack extends NestedStack {
         this.api.arnForExecuteApi(method, path, BOOTSTRAP_STAGE),
       ),
     });
+  }
+
+  /** Lets {@code grantee} call every control route, and nothing else here. */
+  grantControl(grantee: IGrantable): Grant {
+    return Grant.addToPrincipal({
+      grantee,
+      actions: ['execute-api:Invoke'],
+      resourceArns: [
+        this.api.arnForExecuteApi('*', '/v1/control/*', BOOTSTRAP_STAGE),
+      ],
+    });
+  }
+
+  /**
+   * Only what ControlService does: read device records (never write them),
+   * read the `helios` and `stream` shadows, and write the `stream` shadow.
+   */
+  private grantControlApi(): void {
+    const shadows = (names: ReadonlyArray<string>) =>
+      names.map(name =>
+        this.formatArn({
+          service: 'iot',
+          resource: 'thing',
+          resourceName: `*/${name}`,
+        }),
+      );
+    for (const statement of [
+      new PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:Scan'],
+        resources: [this.devices.tableArn],
+      }),
+      new PolicyStatement({
+        actions: ['iot:GetThingShadow'],
+        resources: shadows(CONTROL_READ_SHADOWS),
+      }),
+      new PolicyStatement({
+        actions: ['iot:UpdateThingShadow'],
+        resources: shadows(CONTROL_WRITE_SHADOWS),
+      }),
+    ]) {
+      this.controlApi.addToRolePolicy(statement);
+    }
   }
 
   /** Only the DynamoDB calls AdminStore makes. */

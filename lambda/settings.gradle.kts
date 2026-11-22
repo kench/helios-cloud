@@ -26,3 +26,6 @@ include("device-api")
 
 // The admin API Lambda: device registration and management (Bootstrap API, section 4).
 include("admin-api")
+
+// The control API Lambda: devices and their streams for operators and agents (HLD section 7.3).
+include("control-api")

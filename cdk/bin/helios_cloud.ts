@@ -47,5 +47,6 @@ new HeliosCloudStack(app, 'HeliosCloud', {
   env: {account: ACCOUNT, region: REGION},
   deviceApiCode: lambdaPackage('device-api'),
   adminApiCode: lambdaPackage('admin-api'),
+  controlApiCode: lambdaPackage('control-api'),
   iotEndpoints: IOT_ENDPOINTS,
 });
