@@ -48,6 +48,24 @@ class DestinationsTest {
         "srt://[2001:db8::1]:4001?streamid=publish/live/a&passphrase=a+b!cdefghij", v6.url());
   }
 
+  @Test
+  void redactsPassphrasesForLogs() {
+    assertEquals(
+        "srt://h:1?streamid=a&passphrase=***&latency=200",
+        Destinations.redact("srt://h:1?streamid=a&passphrase=not-a-secret-123&latency=200"));
+    assertEquals("srtla://h:1?passphrase=***", Destinations.redact("srtla://h:1?passphrase=x%21y"));
+    assertEquals(
+        "srt://h:1?passphrase=***&passphrase=***#f",
+        Destinations.redact("srt://h:1?passphrase=a&passphrase=b#f"),
+        "every one, even in an invalid URL");
+    assertEquals("srt://h:1?latency=200", Destinations.redact("srt://h:1?latency=200"));
+    assertEquals(
+        "srt://h:1?mypassphrase=x",
+        Destinations.redact("srt://h:1?mypassphrase=x"),
+        "only the parameter itself");
+    assertNull(Destinations.redact(null));
+  }
+
   @ParameterizedTest
   @CsvSource(
       delimiter = '|',
