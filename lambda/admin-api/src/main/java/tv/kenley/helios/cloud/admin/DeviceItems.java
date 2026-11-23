@@ -42,13 +42,33 @@ final class DeviceItems {
     }
   }
 
+  /** A record's {@code token} map. */
+  static AttributeValue token(TokenLabels labels) {
+    Map<String, AttributeValue> token = new HashMap<>();
+    token.put("tokenLabel", str(labels.getTokenLabel()));
+    token.put("keyLabel", str(labels.getKeyLabel()));
+    Optional.ofNullable(labels.getChallengeKeyLabel())
+        .ifPresent(label -> token.put("challengeKeyLabel", str(label)));
+    return AttributeValue.fromM(token);
+  }
+
+  /** A record's {@code aws} map. */
+  static AttributeValue aws(AwsSettings aws) {
+    return AttributeValue.fromM(
+        Map.of(
+            "region", str(aws.getRegion()),
+            "iotEndpoint", str(aws.getIotEndpoint()),
+            "credentialsEndpoint", str(aws.getCredentialsEndpoint()),
+            "roleAlias", str(aws.getRoleAlias())));
+  }
+
+  /** A record's {@code macs} list. */
+  static AttributeValue macs(List<String> macs) {
+    return AttributeValue.fromL(macs.stream().map(DeviceItems::str).toList());
+  }
+
   /** The {@code devices} item for {@code device}. */
   static Map<String, AttributeValue> item(NewDevice device) {
-    Map<String, AttributeValue> token = new HashMap<>();
-    token.put("tokenLabel", str(device.token().getTokenLabel()));
-    token.put("keyLabel", str(device.token().getKeyLabel()));
-    Optional.ofNullable(device.token().getChallengeKeyLabel())
-        .ifPresent(label -> token.put("challengeKeyLabel", str(label)));
     Map<String, AttributeValue> challenge = new HashMap<>();
     challenge.put("required", AttributeValue.fromBool(device.challengeRequired()));
     device.publicKeyPem().ifPresent(pem -> challenge.put("publicKeyPem", str(pem)));
@@ -61,21 +81,11 @@ final class DeviceItems {
     item.put("thingName", str(device.thingName()));
     item.put("role", str(device.role().getValue()));
     item.put("status", str(DeviceStatus.ACTIVE.getValue()));
-    item.put("macs", AttributeValue.fromL(device.macs().stream().map(DeviceItems::str).toList()));
+    item.put("macs", macs(device.macs()));
     item.put("pin", str(device.pin()));
-    item.put("token", AttributeValue.fromM(token));
+    item.put("token", token(device.token()));
     item.put("challenge", AttributeValue.fromM(challenge));
-    device
-        .aws()
-        .ifPresent(aws ->
-            item.put(
-                "aws",
-                AttributeValue.fromM(
-                    Map.of(
-                        "region", str(aws.getRegion()),
-                        "iotEndpoint", str(aws.getIotEndpoint()),
-                        "credentialsEndpoint", str(aws.getCredentialsEndpoint()),
-                        "roleAlias", str(aws.getRoleAlias())))));
+    device.aws().ifPresent(aws -> item.put("aws", aws(aws)));
     item.put("createdAt", str(device.now().toString()));
     item.put("updatedAt", str(device.now().toString()));
     return item;

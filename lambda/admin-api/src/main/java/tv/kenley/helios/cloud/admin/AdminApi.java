@@ -22,6 +22,8 @@ import tv.kenley.helios.cloud.model.RegisterDeviceOutput;
 import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusOutput;
+import tv.kenley.helios.cloud.model.UpdateDeviceInput;
+import tv.kenley.helios.cloud.model.UpdateDeviceOutput;
 
 /**
  * The admin API's HTTP side, in {@code restJson1} (Bootstrap API, section 4). API Gateway checks
@@ -89,6 +91,13 @@ final class AdminApi {
               yield RestJson.ok(
                   200, SetDeviceStatusOutput.builder().device(service.setStatus(input)).build());
             }
+            case "UpdateDevice" -> {
+              String id = deviceId;
+              UpdateDeviceInput input =
+                  RestJson.decode(request.body(), UpdateDeviceInput.builder(), b -> b.deviceId(id));
+              yield RestJson.ok(
+                  200, UpdateDeviceOutput.builder().device(service.update(input)).build());
+            }
             case "SetDevicePin" -> {
               String id = deviceId;
               service.setPin(
@@ -139,6 +148,7 @@ final class AdminApi {
       return switch (method) {
         case "GET" -> Optional.of(new Route("GetDevice", device.group(1)));
         case "DELETE" -> Optional.of(new Route("DeleteDevice", device.group(1)));
+        case "PATCH" -> Optional.of(new Route("UpdateDevice", device.group(1)));
         default -> Optional.empty();
       };
     }

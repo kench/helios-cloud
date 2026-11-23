@@ -306,6 +306,7 @@ describe('BootstrapStack', () => {
         // Admin (PUT: status, pin, challenge-key).
         ['DELETE', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
+        ['PATCH', 'AWS_IAM'],
         ['POST', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],

@@ -105,15 +105,17 @@ export function payloadTemplate(module: string, name: string): string {
 }
 
 /**
- * The admin API routes provisioning needs: RegisterDevice and GetDevice, and,
- * to re-provision a registered device (a new token for the same thing and
- * device ID), SetDevicePin and PutChallengeKey.
+ * The admin API routes provisioning needs: RegisterDevice and GetDevice;
+ * UpdateDevice, to correct a record (its MACs, for example); and, to
+ * re-provision a registered device (a new token for the same thing and device
+ * ID), SetDevicePin and PutChallengeKey.
  */
 export const PROVISIONING_ROUTES: ReadonlyArray<[string, string]> = [
   ['POST', '/v1/admin/devices'],
   ['GET', '/v1/admin/devices/*'],
   ['PUT', '/v1/admin/devices/*/pin'],
   ['PUT', '/v1/admin/devices/*/challenge-key'],
+  ['PATCH', '/v1/admin/devices/*'],
 ];
 
 /**
@@ -336,6 +338,7 @@ export class BootstrapStack extends NestedStack {
     const device = devices.addResource('{deviceId}');
     device.addMethod('GET', admin, iam);
     device.addMethod('DELETE', admin, iam);
+    device.addMethod('PATCH', admin, iam);
     device.addResource('status').addMethod('PUT', admin, iam);
     device.addResource('pin').addMethod('PUT', admin, iam);
     device.addResource('challenge-key').addMethod('PUT', admin, iam);
@@ -374,8 +377,8 @@ export class BootstrapStack extends NestedStack {
 
   /**
    * Lets {@code grantee} call the admin routes provisioning needs
-   * (RegisterDevice, GetDevice, SetDevicePin and PutChallengeKey), and no
-   * others.
+   * (RegisterDevice, GetDevice, UpdateDevice, SetDevicePin and
+   * PutChallengeKey), and no others.
    */
   grantProvisioning(grantee: IGrantable): Grant {
     return Grant.addToPrincipal({

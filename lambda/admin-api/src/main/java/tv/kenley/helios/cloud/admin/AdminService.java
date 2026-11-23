@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.security.interfaces.ECPublicKey;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,6 +13,7 @@ import software.amazon.smithy.java.framework.model.ValidationException;
 import tv.kenley.helios.cloud.common.ChallengeKeys;
 import tv.kenley.helios.cloud.common.Ulid;
 import tv.kenley.helios.cloud.model.ChallengeKeyDescription;
+import tv.kenley.helios.cloud.model.ChallengeKeyNotRegistered;
 import tv.kenley.helios.cloud.model.ChallengeSettings;
 import tv.kenley.helios.cloud.model.DeviceDescription;
 import tv.kenley.helios.cloud.model.DeviceNotDisabled;
@@ -23,9 +25,10 @@ import tv.kenley.helios.cloud.model.RegisterDeviceInput;
 import tv.kenley.helios.cloud.model.RegistrationConflict;
 import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
+import tv.kenley.helios.cloud.model.UpdateDeviceInput;
 
 /**
- * The admin API's operations (Bootstrap API, section 4): RegisterDevice, GetDevice,
+ * The admin API's operations (Bootstrap API, section 4): RegisterDevice, GetDevice, UpdateDevice,
  * SetDeviceStatus, SetDevicePin, PutChallengeKey and DeleteDevice. Errors are the modelled ones,
  * thrown as the generated exceptions.
  */
@@ -87,6 +90,73 @@ final class AdminService {
   /** {@code GetDevice}. */
   DeviceDescription get(String deviceId) {
     return DeviceItems.describe(store.get(deviceId).orElseThrow(() -> notFound(deviceId)));
+  }
+
+  /**
+   * {@code UpdateDevice}: the members given replace the record's; the others stay. A MAC change
+   * moves the record's MAC index entries in the same transaction.
+   */
+  DeviceDescription update(UpdateDeviceInput input) {
+    String deviceId = input.getDeviceId();
+    Map<String, AttributeValue> current = store.get(deviceId).orElseThrow(() -> notFound(deviceId));
+    DeviceDescription before = DeviceItems.describe(current);
+    Map<String, AttributeValue> set = new HashMap<>();
+    if (input.getThingName() != null && !input.getThingName().equals(before.getThingName())) {
+      if (store.thingNameTaken(input.getThingName())) {
+        throw RegistrationConflict.builder()
+            .message("The thing name already belongs to another device record.")
+            .conflictingThingName(input.getThingName())
+            .build();
+      }
+      set.put("thingName", DeviceItems.str(input.getThingName()));
+    }
+    if (input.getRole() != null) {
+      set.put("role", DeviceItems.str(input.getRole().getValue()));
+    }
+    if (input.getToken() != null) {
+      set.put("token", DeviceItems.token(input.getToken()));
+    }
+    if (input.getAws() != null) {
+      set.put("aws", DeviceItems.aws(input.getAws()));
+    }
+    if (input.isChallengeRequired() != null) {
+      if (input.isChallengeRequired() && before.getChallenge().getPublicKeyPem() == null) {
+        throw ChallengeKeyNotRegistered.builder()
+            .message("challengeRequired needs a registered challenge key (PutChallengeKey).")
+            .build();
+      }
+      set.put("challenge.required", AttributeValue.fromBool(input.isChallengeRequired()));
+    }
+    List<String> oldMacs = before.getMacs();
+    List<String> added = List.of();
+    List<String> removed = List.of();
+    if (input.hasMacs()) {
+      List<String> macs = input.getMacs().stream().distinct().sorted().toList();
+      added = macs.stream().filter(mac -> !oldMacs.contains(mac)).toList();
+      removed = oldMacs.stream().filter(mac -> !macs.contains(mac)).toList();
+      set.put("macs", DeviceItems.macs(macs));
+    }
+    set.put("updatedAt", DeviceItems.str(clock.instant().toString()));
+    try {
+      store.update(deviceId, set, rawMacs(current), added, removed);
+    } catch (AdminStore.MacConflict e) {
+      throw RegistrationConflict.builder()
+          .message("MAC addresses already belong to another device record.")
+          .conflictingMacs(e.macs())
+          .build();
+    } catch (AdminStore.Changed e) {
+      throw RegistrationConflict.builder()
+          .message("The record changed while it was being updated; try again.")
+          .build();
+    }
+    return get(deviceId);
+  }
+
+  /** The record's {@code macs} as stored, for the update's condition. */
+  private static List<String> rawMacs(Map<String, AttributeValue> item) {
+    return item.containsKey("macs")
+        ? item.get("macs").l().stream().map(AttributeValue::s).toList()
+        : List.of();
   }
 
   /** {@code SetDeviceStatus}. */

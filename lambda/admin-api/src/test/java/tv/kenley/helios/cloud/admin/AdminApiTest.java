@@ -37,6 +37,7 @@ import tv.kenley.helios.cloud.model.PutChallengeKeyInput;
 import tv.kenley.helios.cloud.model.RegisterDeviceInput;
 import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
+import tv.kenley.helios.cloud.model.UpdateDeviceInput;
 
 @ExtendWith(MockitoExtension.class)
 final class AdminApiTest {
@@ -199,7 +200,6 @@ final class AdminApiTest {
 
   @Test
   void otherRoutesAreNotFound() {
-    assertEquals(404, call("PATCH", AdminApi.DEVICES_PATH + "/" + ID, "{}").status());
     assertEquals(404, call("GET", AdminApi.DEVICES_PATH, "").status());
     assertEquals(404, call("POST", AdminApi.DEVICES_PATH + "/" + ID + "/status", "{}").status());
     assertEquals(404, call("PUT", AdminApi.DEVICES_PATH + "/" + ID + "/token", "{}").status());
@@ -289,5 +289,28 @@ final class AdminApiTest {
             .expectStringMember("keyFingerprint")
             .getValue());
     assertEquals("PutChallengeKey", lastAudit().expectStringMember("operation").getValue());
+  }
+
+  @Test
+  void updatesTheDevice() {
+    ArgumentCaptor<UpdateDeviceInput> input = ArgumentCaptor.forClass(UpdateDeviceInput.class);
+    when(service.update(input.capture())).thenReturn(DEVICE);
+
+    RestJson.Response response =
+        call(
+            "PATCH",
+            AdminApi.DEVICES_PATH + "/" + ID,
+            "{\"macs\": [\"c0:74:2b:f2:75:13\", \"cc:21:9d:b0:5b:16\"]}");
+
+    assertEquals(200, response.status());
+    assertEquals(ID, input.getValue().getDeviceId());
+    assertEquals(2, input.getValue().getMacs().size());
+    assertEquals(
+        ID,
+        json(response.body())
+            .expectObjectMember("device")
+            .expectStringMember("deviceId")
+            .getValue());
+    assertEquals("UpdateDevice", lastAudit().expectStringMember("operation").getValue());
   }
 }
