@@ -7,6 +7,7 @@ import {
   DEVICE_API_HANDLER,
   THROTTLE_BURST,
   THROTTLE_RATE_PER_SECOND,
+  EGRESS_RESPONSE_TEMPLATE,
 } from '../lib/bootstrap_stack';
 import {DEVICE_ROLE_ALIAS_NAME} from '../lib/device_identity_stack';
 import {
@@ -316,9 +317,10 @@ describe('BootstrapStack', () => {
         ['PUT', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],
-        // Device.
+        // Device: bootstrap and challenge open, the egress echo signed.
         ['POST', 'NONE'],
         ['POST', 'NONE'],
+        ['GET', 'AWS_IAM'],
         // Control: eight reads, an update, start, stop, the destination, and
         // setting and removing a Wi-Fi network.
         ['GET', 'AWS_IAM'],
@@ -337,9 +339,12 @@ describe('BootstrapStack', () => {
         ['PUT', 'AWS_IAM'],
       ].sort(),
     );
-    template.allResourcesProperties('AWS::ApiGateway::Method', {
-      Integration: {Type: 'AWS_PROXY'},
-    });
+    // Every method proxies to a Lambda except the egress echo, a mock (its
+    // own test checks it).
+    const integrations = Object.values(
+      template.findResources('AWS::ApiGateway::Method'),
+    ).map(method => method['Properties']['Integration']['Type']);
+    expect(integrations.filter(type => type !== 'AWS_PROXY')).toEqual(['MOCK']);
     const paths = Object.values(
       template.findResources('AWS::ApiGateway::Resource'),
     ).map(resource => resource['Properties']['PathPart']);
@@ -349,6 +354,7 @@ describe('BootstrapStack', () => {
         'device',
         'bootstrap',
         'challenge',
+        'egress',
         'admin',
         'devices',
         '{deviceId}',
@@ -370,6 +376,39 @@ describe('BootstrapStack', () => {
         'destination',
       ].sort(),
     );
+  });
+
+  it('serves the API dual-stack on its execute-api name', () => {
+    synthesize().hasResourceProperties('AWS::ApiGateway::RestApi', {
+      Name: 'helios-bootstrap',
+      EndpointConfiguration: {Types: ['REGIONAL'], IpAddressType: 'dualstack'},
+    });
+  });
+
+  it("echoes the caller's address from API Gateway itself, signed with IAM", () => {
+    const template = synthesize();
+    const egress = Object.entries(
+      template.findResources('AWS::ApiGateway::Resource'),
+    ).find(([, resource]) => resource['Properties']['PathPart'] === 'egress');
+    expect(egress).toBeDefined();
+    const methods = Object.values(
+      template.findResources('AWS::ApiGateway::Method', {
+        Properties: {ResourceId: {Ref: egress![0]}},
+      }),
+    );
+    expect(methods).toHaveLength(1);
+    const method = methods[0]['Properties'];
+    expect(method['HttpMethod']).toBe('GET');
+    expect(method['AuthorizationType']).toBe('AWS_IAM');
+    expect(method['Integration']['Type']).toBe('MOCK');
+    const template200 =
+      method['Integration']['IntegrationResponses'][0]['ResponseTemplates'][
+        'application/json'
+      ];
+    expect(template200).toBe(EGRESS_RESPONSE_TEMPLATE);
+    // Only API Gateway's own view of the connection, never a header.
+    expect(EGRESS_RESPONSE_TEMPLATE).toContain('$context.identity.sourceIp');
+    expect(EGRESS_RESPONSE_TEMPLATE).not.toMatch(/\$input|\$method|header/i);
   });
 
   it('throttles the stage', () => {

@@ -43,7 +43,7 @@ describe('DeviceIdentityStack', () => {
     });
   });
 
-  it('lets devices read only their own SRT secrets', () => {
+  it('lets devices read only their own SRT secrets and call only the egress echo', () => {
     expect(
       statements(synthesize(), 'AWS::IAM::Policy', 'PolicyDocument'),
     ).toEqual([
@@ -53,6 +53,16 @@ describe('DeviceIdentityStack', () => {
         Resource:
           `arn:aws:secretsmanager:${REGION}:${ACCOUNT}:secret:` +
           'helios/srt/${credentials-iot:ThingName}*',
+      },
+      {
+        Action: 'execute-api:Invoke',
+        Effect: 'Allow',
+        // The bootstrap API's ID is a reference; only this one route.
+        Resource: expect.stringMatching(
+          new RegExp(
+            `^arn:aws:execute-api:${REGION}:${ACCOUNT}:.+/dev/GET/v1/device/egress$`,
+          ),
+        ),
       },
     ]);
   });

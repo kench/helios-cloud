@@ -25,10 +25,14 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
 - `Bootstrap`: the bootstrap service (Bootstrap API, section 7). The device API Lambda (`java25`,
   ARM64), the admin API Lambda and the control API Lambda (HLD section 7.3) behind one regional
   REST API, with the `devices`, `mac_index` and `challenges` DynamoDB
-  tables. For now it uses the API's default `execute-api` domain (stage `dev`), keeps PINs in the
+  tables. The API is dual-stack (IPv4 and IPv6) on its `execute-api` name; Helios 0.10.0 and later
+  connect with Happy Eyeballs. For now it uses the API's default `execute-api` domain (stage `dev`), keeps PINs in the
   `devices` table under DynamoDB's encryption at rest, and is protected only by stage throttling
   (10 requests a second, bursts of 20). The stack output `BootstrapUrl` is the value for Helios's
-  `bootstrap.url`. The device routes are open; the admin routes (`/v1/admin/devices…`) need a
+  `bootstrap.url`. The device routes are open, except `GET /v1/device/egress` (LLD 3, section
+  3.1): an IAM-signed mock integration that only the device role may call, answering
+  `{"address": <the caller's address as API Gateway saw it>, "atMs": <request time>}` so
+  Helios learns each uplink's public address; the admin routes (`/v1/admin/devices…`) need a
   SigV4 signature, and `helios-provisioning` may call `RegisterDevice` and `GetDevice` only. The
   control routes (`/v1/control/…`) need a SigV4 signature too, and `helios-operator` may call
   them all.
