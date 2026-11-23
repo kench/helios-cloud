@@ -20,6 +20,7 @@ import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
 import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
 import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
 import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
+import software.amazon.awssdk.services.dynamodb.model.Update;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 import tv.kenley.helios.cloud.model.DeviceStatus;
 
@@ -180,6 +181,105 @@ final class AdminStore {
               .attributes());
     } catch (ConditionalCheckFailedException e) {
       return Optional.empty();
+    }
+  }
+
+  /** The record changed between reading it and updating it, or no longer exists. */
+  static final class Changed extends Exception {
+    private static final long serialVersionUID = 1L;
+
+    Changed() {
+      super("the record changed meanwhile");
+    }
+  }
+
+  /**
+   * Updates a record in one transaction with its MAC index entries: sets {@code set} (attribute
+   * name to value), adds index entries for {@code added} and removes those for {@code removed}.
+   * Only if the record still has {@code expectedMacs}, so the index can't drift from the record.
+   *
+   * @throws MacConflict if an added MAC already belongs to a record
+   * @throws Changed if the record is gone or its MACs changed meanwhile
+   */
+  void update(
+      String deviceId,
+      Map<String, AttributeValue> set,
+      List<String> expectedMacs,
+      List<String> added,
+      List<String> removed)
+      throws MacConflict, Changed {
+    Map<String, String> names = new HashMap<>();
+    Map<String, AttributeValue> values = new HashMap<>();
+    List<String> assignments = new ArrayList<>();
+    int i = 0;
+    for (Map.Entry<String, AttributeValue> entry : set.entrySet()) {
+      String[] path = entry.getKey().split("\\.");
+      List<String> parts = new ArrayList<>();
+      for (String part : path) {
+        String name = "#n" + i + "_" + parts.size();
+        names.put(name, part);
+        parts.add(name);
+      }
+      String value = ":v" + i;
+      values.put(value, entry.getValue());
+      assignments.add(String.join(".", parts) + " = " + value);
+      i++;
+    }
+    names.put("#macs", "macs");
+    values.put(":expectedMacs", DeviceItems.macs(expectedMacs));
+    List<TransactWriteItem> items = new ArrayList<>();
+    items.add(
+        TransactWriteItem.builder()
+            .update(
+                Update.builder()
+                    .tableName(tables.devices())
+                    .key(Map.of("deviceId", str(deviceId)))
+                    .updateExpression("SET " + String.join(", ", assignments))
+                    .conditionExpression("attribute_exists(deviceId) AND #macs = :expectedMacs")
+                    .expressionAttributeNames(names)
+                    .expressionAttributeValues(values)
+                    .build())
+            .build());
+    for (String mac : added) {
+      items.add(
+          TransactWriteItem.builder()
+              .put(
+                  Put.builder()
+                      .tableName(tables.macIndex())
+                      .item(Map.of("mac", str(mac), "deviceId", str(deviceId)))
+                      .conditionExpression("attribute_not_exists(mac)")
+                      .build())
+              .build());
+    }
+    for (String mac : removed) {
+      items.add(
+          TransactWriteItem.builder()
+              .delete(
+                  Delete.builder()
+                      .tableName(tables.macIndex())
+                      .key(Map.of("mac", str(mac)))
+                      .conditionExpression("deviceId = :deviceId")
+                      .expressionAttributeValues(Map.of(":deviceId", str(deviceId)))
+                      .build())
+              .build());
+    }
+    try {
+      db.transactWriteItems(TransactWriteItemsRequest.builder().transactItems(items).build());
+    } catch (TransactionCanceledException e) {
+      List<CancellationReason> reasons = e.cancellationReasons();
+      if (!reasons.isEmpty() && "ConditionalCheckFailed".equals(reasons.getFirst().code())) {
+        throw new Changed();
+      }
+      List<String> conflicting = new ArrayList<>();
+      for (int j = 1; j <= added.size() && j < reasons.size(); j++) {
+        if ("ConditionalCheckFailed".equals(reasons.get(j).code())) {
+          conflicting.add(added.get(j - 1));
+        }
+      }
+      if (conflicting.isEmpty()) {
+        throw e;
+      }
+      throw new MacConflict(conflicting);
     }
   }
 

@@ -1,6 +1,7 @@
 package tv.kenley.helios.cloud.admin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,6 +32,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.smithy.java.framework.model.ValidationException;
+import tv.kenley.helios.cloud.model.ChallengeKeyNotRegistered;
 import tv.kenley.helios.cloud.model.ChallengeSettings;
 import tv.kenley.helios.cloud.model.DeviceDescription;
 import tv.kenley.helios.cloud.model.DeviceNotDisabled;
@@ -43,6 +45,7 @@ import tv.kenley.helios.cloud.model.RegisterDeviceInput;
 import tv.kenley.helios.cloud.model.RegistrationConflict;
 import tv.kenley.helios.cloud.model.SetDevicePinInput;
 import tv.kenley.helios.cloud.model.SetDeviceStatusInput;
+import tv.kenley.helios.cloud.model.UpdateDeviceInput;
 
 @ExtendWith(MockitoExtension.class)
 final class AdminServiceTest {
@@ -239,5 +242,110 @@ final class AdminServiceTest {
         () ->
             service.putChallengeKey(
                 PutChallengeKeyInput.builder().deviceId(ID).publicKeyPem("not a key").build()));
+  }
+
+  private Map<String, AttributeValue> record(Optional<String> pem) {
+    return DeviceItems.item(DeviceItemsTest.newDevice(pem, Optional.empty()));
+  }
+
+  @Test
+  void updatesTheMembersGivenAndMovesTheMacs() throws Exception {
+    Map<String, AttributeValue> current = record(Optional.empty());
+    when(store.get(ID)).thenReturn(Optional.of(current));
+    ArgumentCaptor<Map<String, AttributeValue>> set = ArgumentCaptor.captor();
+    ArgumentCaptor<List<String>> added = ArgumentCaptor.captor();
+    ArgumentCaptor<List<String>> removed = ArgumentCaptor.captor();
+    String wifi = "cc:21:9d:b0:5b:16";
+    String eth = "c0:74:2b:f2:75:13";
+
+    service.update(
+        UpdateDeviceInput.builder()
+            .deviceId(ID)
+            .macs(List.of(eth, eth, wifi))
+            .role(DeviceRole.TRANSCODER)
+            .build());
+
+    List<String> before = current.get("macs").l().stream().map(AttributeValue::s).toList();
+    verify(store).update(eq(ID), set.capture(), eq(before), added.capture(), removed.capture());
+    assertEquals(
+        List.of(eth, wifi),
+        set.getValue().get("macs").l().stream().map(AttributeValue::s).toList(),
+        "distinct and sorted");
+    assertEquals("transcoder", set.getValue().get("role").s());
+    assertTrue(set.getValue().containsKey("updatedAt"));
+    assertFalse(set.getValue().containsKey("thingName"), "left out, so unchanged");
+    // The record had only the scanner's Ethernet MAC: both new ones are added, it's removed.
+    assertEquals(List.of(eth, wifi), added.getValue());
+    assertEquals(List.of("00:d0:93:4a:ba:ae"), removed.getValue());
+  }
+
+  @Test
+  void refusesConflictsAndMissingChallengeKeys() throws Exception {
+    when(store.get(ID)).thenReturn(Optional.of(record(Optional.empty())));
+    when(store.thingNameTaken("t-taken")).thenReturn(true);
+    RegistrationConflict thing =
+        assertThrows(
+            RegistrationConflict.class,
+            () ->
+                service.update(
+                    UpdateDeviceInput.builder().deviceId(ID).thingName("t-taken").build()));
+    assertEquals("t-taken", thing.getConflictingThingName());
+    assertThrows(
+        ChallengeKeyNotRegistered.class,
+        () ->
+            service.update(
+                UpdateDeviceInput.builder().deviceId(ID).challengeRequired(true).build()));
+
+    doThrow(new AdminStore.MacConflict(List.of(ETH)))
+        .when(store)
+        .update(eq(ID), anyMap(), anyList(), anyList(), anyList());
+    RegistrationConflict macs =
+        assertThrows(
+            RegistrationConflict.class,
+            () ->
+                service.update(
+                    UpdateDeviceInput.builder().deviceId(ID).macs(List.of(ETH)).build()));
+    assertEquals(List.of(ETH), macs.getConflictingMacs());
+
+    doThrow(new AdminStore.Changed())
+        .when(store)
+        .update(eq(ID), anyMap(), anyList(), anyList(), anyList());
+    assertThrows(
+        RegistrationConflict.class,
+        () -> service.update(UpdateDeviceInput.builder().deviceId(ID).build()));
+
+    when(store.get("d-missing")).thenReturn(Optional.empty());
+    assertThrows(
+        DeviceNotFound.class,
+        () -> service.update(UpdateDeviceInput.builder().deviceId("d-missing").build()));
+  }
+
+  @Test
+  void setsTheOtherMembersWhenGiven() throws Exception {
+    when(store.get(ID)).thenReturn(Optional.of(record(Optional.of(p256Pem()))));
+    when(store.thingNameTaken("t-new")).thenReturn(false);
+    ArgumentCaptor<Map<String, AttributeValue>> set = ArgumentCaptor.captor();
+
+    service.update(
+        UpdateDeviceInput.builder()
+            .deviceId(ID)
+            .thingName("t-new")
+            .challengeRequired(true)
+            .token(DeviceItemsTest.TOKEN)
+            .aws(
+                tv.kenley.helios.cloud.model.AwsSettings.builder()
+                    .region("us-west-2")
+                    .iotEndpoint("a-ats.iot.us-west-2.amazonaws.com")
+                    .credentialsEndpoint("c.credentials.iot.us-west-2.amazonaws.com")
+                    .roleAlias("alias")
+                    .build())
+            .build());
+
+    verify(store).update(eq(ID), set.capture(), anyList(), eq(List.of()), eq(List.of()));
+    assertEquals("t-new", set.getValue().get("thingName").s());
+    assertTrue(set.getValue().get("challenge.required").bool());
+    assertEquals("helios", set.getValue().get("token").m().get("tokenLabel").s());
+    assertEquals("us-west-2", set.getValue().get("aws").m().get("region").s());
+    assertFalse(set.getValue().containsKey("macs"), "macs left out, so unchanged");
   }
 }

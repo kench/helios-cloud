@@ -26,9 +26,11 @@ import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
 import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
 import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsResponse;
 import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
+import software.amazon.awssdk.services.dynamodb.model.Update;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
 import tv.kenley.helios.cloud.model.DeviceStatus;
@@ -238,5 +240,73 @@ final class AdminStoreTest {
     when(db.updateItem(any(UpdateItemRequest.class)))
         .thenThrow(ConditionalCheckFailedException.builder().message("missing").build());
     assertTrue(store().setChallengeKey(ID, "PEM", "ab", DeviceItemsTest.NOW).isEmpty());
+  }
+
+  @Test
+  void updatesTheRecordAndMovesItsMacsInOneTransaction() throws Exception {
+    ArgumentCaptor<TransactWriteItemsRequest> transaction =
+        ArgumentCaptor.forClass(TransactWriteItemsRequest.class);
+    when(db.transactWriteItems(transaction.capture()))
+        .thenReturn(TransactWriteItemsResponse.builder().build());
+
+    store()
+        .update(
+            ID,
+            Map.of(
+                "macs", DeviceItems.macs(List.of("aa:aa:aa:aa:aa:aa", "bb:bb:bb:bb:bb:bb")),
+                "challenge.required", AttributeValue.fromBool(true)),
+            List.of("cc:cc:cc:cc:cc:cc", "aa:aa:aa:aa:aa:aa"),
+            List.of("bb:bb:bb:bb:bb:bb"),
+            List.of("cc:cc:cc:cc:cc:cc"));
+
+    List<TransactWriteItem> items = transaction.getValue().transactItems();
+    assertEquals(3, items.size());
+    Update update = items.getFirst().update();
+    assertTrue(update.updateExpression().startsWith("SET "), update.updateExpression());
+    assertTrue(update.expressionAttributeNames().containsValue("challenge"));
+    assertTrue(update.expressionAttributeNames().containsValue("required"));
+    assertEquals(
+        "attribute_exists(deviceId) AND #macs = :expectedMacs", update.conditionExpression());
+    assertEquals(
+        List.of("cc:cc:cc:cc:cc:cc", "aa:aa:aa:aa:aa:aa"),
+        update.expressionAttributeValues().get(":expectedMacs").l().stream()
+            .map(AttributeValue::s)
+            .toList(),
+        "the record's MACs as read, in their order");
+    assertEquals("bb:bb:bb:bb:bb:bb", items.get(1).put().item().get("mac").s());
+    assertEquals("attribute_not_exists(mac)", items.get(1).put().conditionExpression());
+    assertEquals("cc:cc:cc:cc:cc:cc", items.get(2).delete().key().get("mac").s());
+    assertEquals("deviceId = :deviceId", items.get(2).delete().conditionExpression());
+  }
+
+  @Test
+  void anUpdateReportsTakenMacsAndRecordsThatChanged() {
+    when(db.transactWriteItems(any(TransactWriteItemsRequest.class)))
+        .thenThrow(
+            canceled("None", "ConditionalCheckFailed"),
+            canceled("ConditionalCheckFailed", "None"),
+            canceled("None", "None"));
+
+    AdminStore.MacConflict taken =
+        assertThrows(
+            AdminStore.MacConflict.class,
+            () -> store().update(ID, Map.of(), List.of(), List.of("00:d0:93:4a:ba:ae"), List.of()));
+    assertEquals(List.of("00:d0:93:4a:ba:ae"), taken.macs());
+    assertThrows(
+        AdminStore.Changed.class,
+        () -> store().update(ID, Map.of(), List.of(), List.of("00:d0:93:4a:ba:ae"), List.of()));
+    assertThrows(
+        TransactionCanceledException.class,
+        () -> store().update(ID, Map.of(), List.of(), List.of("00:d0:93:4a:ba:ae"), List.of()));
+  }
+
+  private static TransactionCanceledException canceled(String... codes) {
+    return TransactionCanceledException.builder()
+        .message("canceled")
+        .cancellationReasons(
+            java.util.Arrays.stream(codes)
+                .map(code -> CancellationReason.builder().code(code).build())
+                .toList())
+        .build();
   }
 }
