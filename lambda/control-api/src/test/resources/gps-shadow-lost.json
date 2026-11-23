@@ -1,0 +1,13 @@
+{
+  "state": {
+    "reported": {
+      "gpsd": "connected",
+      "receivers": [],
+      "fix": {"mode": "none", "lat": 1.0, "lon": 2.0},
+      "last_fix": {"mode": "2d", "time": "2026-11-22T19:00:00.000Z", "lat": 12.3, "lon": -98.7},
+      "satellites": {},
+      "since": "2026-11-22T19:00:05.000Z",
+      "device": {"path": "/dev/ttyACM0", "added": false, "error": "gpsd: ERROR"}
+    }
+  }
+}

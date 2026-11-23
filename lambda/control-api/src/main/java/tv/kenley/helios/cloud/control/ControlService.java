@@ -8,6 +8,7 @@ import tv.kenley.helios.cloud.control.model.BitrateSetting;
 import tv.kenley.helios.cloud.control.model.DeviceNotFound;
 import tv.kenley.helios.cloud.control.model.DeviceStateUnavailable;
 import tv.kenley.helios.cloud.control.model.DeviceSummary;
+import tv.kenley.helios.cloud.control.model.GetDeviceLocationOutput;
 import tv.kenley.helios.cloud.control.model.GetDeviceOutput;
 import tv.kenley.helios.cloud.control.model.GetStreamOutput;
 import tv.kenley.helios.cloud.control.model.ListDevicesOutput;
@@ -32,6 +33,7 @@ import tv.kenley.helios.cloud.control.model.UpdateStreamOutput;
 final class ControlService {
   static final String STREAM_SHADOW = "stream";
   static final String HELIOS_SHADOW = "helios";
+  static final String GPS_SHADOW = "gps";
   static final int DEFAULT_PAGE = 50;
 
   private final DeviceDirectory devices;
@@ -83,6 +85,21 @@ final class ControlService {
           "The device doesn't report its profiles (its Helios predates the Control API).");
     }
     return ListProfilesOutput.builder().profiles(shadow.profiles()).build();
+  }
+
+  /** The device's gps fix (LLD 10). Its exact position: never logged. */
+  GetDeviceLocationOutput getDeviceLocation(String deviceId) {
+    GpsShadow shadow =
+        new GpsShadow(
+            shadows
+                .get(device(deviceId).getThingName(), GPS_SHADOW)
+                .map(ShadowJson::parse)
+                .orElse(null));
+    if (!shadow.reported()) {
+      throw unavailable(
+          "The device hasn't reported a gps state (no gps module, or a Helios before 0.8.0).");
+    }
+    return shadow.location();
   }
 
   ListStreamsOutput listStreams(String deviceId) {

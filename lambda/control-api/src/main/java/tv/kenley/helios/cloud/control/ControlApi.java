@@ -13,6 +13,7 @@ import tv.kenley.helios.cloud.common.Json;
 import tv.kenley.helios.cloud.common.RestJson;
 import tv.kenley.helios.cloud.control.model.DeleteWifiNetworkInput;
 import tv.kenley.helios.cloud.control.model.GetDeviceInput;
+import tv.kenley.helios.cloud.control.model.GetDeviceLocationInput;
 import tv.kenley.helios.cloud.control.model.GetStreamInput;
 import tv.kenley.helios.cloud.control.model.ListDevicesInput;
 import tv.kenley.helios.cloud.control.model.ListInputsInput;
@@ -40,6 +41,7 @@ final class ControlApi {
   private static final Pattern GET_DEVICE = Pattern.compile(DEVICE + "$");
   private static final Pattern INPUTS = Pattern.compile(DEVICE + "/inputs$");
   private static final Pattern PROFILES = Pattern.compile(DEVICE + "/profiles$");
+  private static final Pattern LOCATION = Pattern.compile(DEVICE + "/location$");
   private static final Pattern WIFI = Pattern.compile(DEVICE + "/wifi/networks$");
   private static final Pattern STREAMS = Pattern.compile(DEVICE + "/streams$");
   private static final Pattern ONE_STREAM = Pattern.compile(STREAM + "$");
@@ -110,6 +112,12 @@ final class ControlApi {
                   RestJson.decode(
                       new byte[0], ListProfilesInput.builder(), b -> b.deviceId(device));
               yield RestJson.ok(200, service.listProfiles(input.getDeviceId()));
+            }
+            case "GetDeviceLocation" -> {
+              GetDeviceLocationInput input =
+                  RestJson.decode(
+                      new byte[0], GetDeviceLocationInput.builder(), b -> b.deviceId(device));
+              yield RestJson.ok(200, service.getDeviceLocation(input.getDeviceId()));
             }
             case "ListWifiNetworks" -> {
               ListWifiNetworksInput input =
@@ -215,6 +223,7 @@ final class ControlApi {
             new Rule("GET", GET_DEVICE, "GetDevice"),
             new Rule("GET", INPUTS, "ListInputs"),
             new Rule("GET", PROFILES, "ListProfiles"),
+            new Rule("GET", LOCATION, "GetDeviceLocation"),
             new Rule("GET", WIFI, "ListWifiNetworks"),
             new Rule("PUT", WIFI, "SetWifiNetwork"),
             new Rule("DELETE", WIFI, "DeleteWifiNetwork"),

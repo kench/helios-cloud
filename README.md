@@ -146,12 +146,17 @@ with the caller's IAM ARN.
 callers assume `helios-operator` (`grantControl`). Its handler is
 `tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest`, and
 `./gradlew :control-api:lambdaZip` builds `control-api/build/lambda/control-api.zip`. It reads the
-devices table (never writing it, and never reading PINs), reads the `helios`, `net` and `stream` shadows,
+devices table (never writing it, and never reading PINs), reads the `gps`, `helios`, `net` and `stream` shadows,
 and changes streams by writing the `stream` shadow's desired state (HLD section 7.3.7 lists the
 fields); the device applies them and reports back. Changes answer 202 with the shadow version.
 Destinations are SRT or SRTLA URLs only, checked by `Destinations.java` and stored in a normal
 form. Each call writes an audit line with the caller's IAM ARN, and a destination change also
 records the new destination. `GetStreamStatus` (a command with a response) isn't routed yet.
+
+Location (LLD 10): `GetDeviceLocation` (`GET …/devices/{deviceId}/location`) reads the `gps`
+shadow into the contract's fix, last fix, receivers and satellites (`GpsShadow.java`); 409
+`DeviceStateUnavailable` when the device has never reported gps. It returns the device's exact
+position, so nothing logs it: the audit line has the operation and result only.
 
 Wi-Fi networks (LLD 3, section 10): `ListWifiNetworks` reads the `net` shadow; `SetWifiNetwork`
 and `DeleteWifiNetwork` are **AWS IoT command executions**, not shadow writes (LLD 2, section

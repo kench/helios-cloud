@@ -1,0 +1,29 @@
+{
+  "state": {
+    "reported": {
+      "gpsd": "connected",
+      "receivers": [
+        {"path": "/dev/ttyACM0", "driver": "NMEA0183", "bps": 9600, "usb_port": "3-1.2"},
+        {"path": "/dev/ttyUSB9"},
+        {"driver": "no path, so left out"}
+      ],
+      "fix": {
+        "mode": "3d", "time": "2026-11-22T20:15:30.000Z",
+        "lat": 12.345678, "lon": -98.765432, "alt_msl_m": 41.5,
+        "speed_mps": 0.12, "track_deg": 270.0, "climb_mps": -0.01,
+        "eph_m": 4.2, "epv_m": 7.9
+      },
+      "satellites": {"used": 9, "visible": 14, "hdop": 0.9, "pdop": 1.6},
+      "since": "2026-11-22T20:10:02.000Z",
+      "device": {"path": "/dev/serial/by-id/usb-Microchip_MCP2221-if01", "added": true}
+    }
+  },
+  "metadata": {
+    "reported": {
+      "gpsd": {"timestamp": 1795378530},
+      "since": {"timestamp": 1795378202}
+    }
+  },
+  "version": 57,
+  "timestamp": 1795378600
+}

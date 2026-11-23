@@ -241,7 +241,12 @@ describe('BootstrapStack', () => {
       {
         Action: 'iot:GetThingShadow',
         Effect: 'Allow',
-        Resource: [`${thing}/*/helios`, `${thing}/*/net`, `${thing}/*/stream`],
+        Resource: [
+          `${thing}/*/gps`,
+          `${thing}/*/helios`,
+          `${thing}/*/net`,
+          `${thing}/*/stream`,
+        ],
       },
       {
         Action: 'iot:UpdateThingShadow',
@@ -314,8 +319,9 @@ describe('BootstrapStack', () => {
         // Device.
         ['POST', 'NONE'],
         ['POST', 'NONE'],
-        // Control: seven reads, an update, start, stop, the destination, and
+        // Control: eight reads, an update, start, stop, the destination, and
         // setting and removing a Wi-Fi network.
+        ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['PUT', 'AWS_IAM'],
@@ -354,6 +360,7 @@ describe('BootstrapStack', () => {
         '{deviceId}',
         'inputs',
         'profiles',
+        'location',
         'wifi',
         'networks',
         'streams',
