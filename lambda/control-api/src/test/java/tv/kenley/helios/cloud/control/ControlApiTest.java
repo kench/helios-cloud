@@ -101,6 +101,8 @@ class ControlApiTest {
     assertEquals(ID, ControlApi.route("GET", BASE + "/streams/pocket").orElseThrow().deviceId());
     assertEquals(
         "pocket", ControlApi.route("GET", BASE + "/streams/pocket").orElseThrow().streamId());
+    assertEquals(
+        "GetDeviceLocation", ControlApi.route("GET", BASE + "/location").orElseThrow().operation());
     assertTrue(ControlApi.route("DELETE", BASE).isEmpty());
     assertTrue(ControlApi.route("GET", BASE + "/streams/pocket/status").isEmpty(), "not yet");
     assertEquals(404, call("GET", "/v1/admin/devices", "").status());
@@ -117,6 +119,30 @@ class ControlApiTest {
     assertEquals(200, call("GET", BASE + "/profiles", "").status());
     assertEquals(200, call("GET", BASE + "/streams/pocket", "").status());
     assertEquals(200, call("GET", "/v1/control/devices", "", Map.of("maxResults", "2")).status());
+  }
+
+  @Test
+  void readsTheLocationWithoutAuditingIt() {
+    assertEquals(409, call("GET", BASE + "/location", "").status(), "no gps shadow yet");
+    assertTrue(audit.getLast().contains("\"result\":\"DeviceStateUnavailable\""), audit.getLast());
+    shadows.documents.put(
+        DeviceDirectoryTest.THING + "/gps", StreamShadowTest.fixture("gps-shadow-fix.json"));
+    RestJson.Response location = call("GET", BASE + "/location", "");
+    assertEquals(200, location.status());
+    for (String field :
+        List.of(
+            "\"gpsd\":\"connected\"",
+            "\"mode\":\"3d\"",
+            "\"latitude\":12.345678",
+            "\"longitude\":-98.765432",
+            "\"reportedAt\":")) {
+      assertTrue(location.body().contains(field), field + " in " + location.body());
+    }
+    String line = audit.getLast();
+    assertTrue(line.contains("\"operation\":\"GetDeviceLocation\""), line);
+    assertTrue(line.contains("\"result\":\"ok\""), line);
+    assertFalse(line.contains("12.34") || line.contains("98.76"), "no position in " + line);
+    assertTrue(errors.isEmpty(), errors.toString());
   }
 
   @Test

@@ -57,10 +57,11 @@ export const CONTROL_API_HANDLER =
   'tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest';
 
 /**
- * The device shadows the control API reads (`net` for the Wi-Fi networks); it
- * writes only `stream`.
+ * The device shadows the control API reads (`net` for the Wi-Fi networks,
+ * `gps` for GetDeviceLocation); it writes only `stream`.
  */
 export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = [
+  'gps',
   'helios',
   'net',
   'stream',
@@ -357,6 +358,7 @@ export class BootstrapStack extends NestedStack {
     controlDevice.addMethod('GET', control, iam);
     controlDevice.addResource('inputs').addMethod('GET', control, iam);
     controlDevice.addResource('profiles').addMethod('GET', control, iam);
+    controlDevice.addResource('location').addMethod('GET', control, iam);
     const wifiNetworks = controlDevice
       .addResource('wifi')
       .addResource('networks');
@@ -403,7 +405,7 @@ export class BootstrapStack extends NestedStack {
 
   /**
    * Only what ControlService does: read device records (never write them),
-   * read the `helios`, `net` and `stream` shadows, write the `stream` shadow,
+   * read the `gps`, `helios`, `net` and `stream` shadows, write the `stream` shadow,
    * and start and read executions of the Helios commands.
    */
   private grantControlApi(): void {
