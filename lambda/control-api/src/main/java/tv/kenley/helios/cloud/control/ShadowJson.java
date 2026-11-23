@@ -104,6 +104,14 @@ final class ShadowJson {
         .orElse(List.of());
   }
 
+  /** The strings in the list at {@code path}, in order; anything else in it is skipped. */
+  static List<String> strings(Document document, String... path) {
+    return list(document, path).stream()
+        .filter(ShadowJson::isString)
+        .map(Document::asString)
+        .toList();
+  }
+
   static boolean isMap(Document document) {
     return switch (document.type()) {
       case MAP, STRUCTURE, UNION -> true;

@@ -68,8 +68,8 @@ export const CONTROL_API_HANDLER =
   'tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest';
 
 /**
- * The device shadows the control API reads (`net` for the Wi-Fi networks,
- * `gps` for GetDeviceLocation); it writes only `stream`.
+ * The device shadows the control API reads (`net` for the Wi-Fi networks and
+ * GetDeviceUplinks, `gps` for GetDeviceLocation); it writes only `stream`.
  */
 export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = [
   'gps',
@@ -403,6 +403,7 @@ export class BootstrapStack extends NestedStack {
     controlDevice.addResource('inputs').addMethod('GET', control, iam);
     controlDevice.addResource('profiles').addMethod('GET', control, iam);
     controlDevice.addResource('location').addMethod('GET', control, iam);
+    controlDevice.addResource('uplinks').addMethod('GET', control, iam);
     const wifiNetworks = controlDevice
       .addResource('wifi')
       .addResource('networks');

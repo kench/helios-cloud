@@ -321,8 +321,9 @@ describe('BootstrapStack', () => {
         ['POST', 'NONE'],
         ['POST', 'NONE'],
         ['GET', 'AWS_IAM'],
-        // Control: eight reads, an update, start, stop, the destination, and
+        // Control: nine reads, an update, start, stop, the destination, and
         // setting and removing a Wi-Fi network.
+        ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
         ['GET', 'AWS_IAM'],
@@ -367,6 +368,7 @@ describe('BootstrapStack', () => {
         'inputs',
         'profiles',
         'location',
+        'uplinks',
         'wifi',
         'networks',
         'streams',
