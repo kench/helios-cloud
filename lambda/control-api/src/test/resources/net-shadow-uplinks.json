@@ -1,0 +1,131 @@
+{
+  "state": {
+    "reported": {
+      "truncated": false,
+      "interfaces": {
+        "enP3p49s0": {
+          "kind": "ethernet",
+          "oper_state": "down",
+          "carrier": false,
+          "ipv4": [],
+          "default_routes": [],
+          "source_route": null,
+          "public_ipv4": null
+        },
+        "enP4p65s0": {
+          "kind": "ethernet",
+          "oper_state": "up",
+          "carrier": true,
+          "ipv4": [
+            "192.168.5.31/24"
+          ],
+          "default_routes": [
+            {
+              "family": "ipv6",
+              "gateway": "fe80::1",
+              "metric": 50
+            },
+            {
+              "family": "ipv4",
+              "gateway": "192.168.5.1",
+              "metric": 100
+            }
+          ],
+          "source_route": {
+            "table": 10003,
+            "rule": true
+          },
+          "public_ipv4": {
+            "address": "203.0.113.7",
+            "checked_at": "2026-11-23T16:12:00Z"
+          }
+        },
+        "wlP2p33s0": {
+          "kind": "wifi",
+          "oper_state": "up",
+          "carrier": true,
+          "ipv4": [
+            "192.168.5.12/24"
+          ],
+          "default_routes": [
+            {
+              "family": "ipv4",
+              "gateway": "192.168.5.1",
+              "metric": 600
+            }
+          ],
+          "source_route": {
+            "table": 10004,
+            "rule": true
+          },
+          "public_ipv4": {
+            "address": "203.0.113.7",
+            "checked_at": "2026-11-23T16:12:05Z"
+          },
+          "wifi": {
+            "ssid": "Bench",
+            "signal_dbm": -38,
+            "frequency_mhz": 5240,
+            "bssid": "02:00:00:00:00:01"
+          }
+        },
+        "usb0": {
+          "kind": "ethernet",
+          "oper_state": "up",
+          "carrier": true,
+          "ipv4": [
+            "172.20.10.2/28"
+          ],
+          "default_routes": [
+            {
+              "family": "ipv4",
+              "gateway": "172.20.10.1",
+              "metric": 700
+            }
+          ],
+          "source_route": {
+            "table": 10005,
+            "rule": true
+          },
+          "public_ipv4": {
+            "address": "203.0.113.7",
+            "checked_at": "2026-11-23T15:00:00Z",
+            "error": "timeout",
+            "failed_at": "2026-11-23T16:13:00Z"
+          }
+        },
+        "wwan0": {
+          "kind": "cellular",
+          "oper_state": "up",
+          "ipv4": [
+            "10.64.12.9/30"
+          ],
+          "default_routes": [
+            {
+              "family": "ipv4",
+              "gateway": "10.64.12.10",
+              "metric": 800
+            }
+          ],
+          "source_route": {
+            "table": 10006,
+            "rule": true
+          },
+          "public_ipv4": {
+            "address": "198.51.100.9",
+            "checked_at": "2026-11-23T16:12:10Z"
+          }
+        },
+        "odd": "not an object"
+      }
+    }
+  },
+  "metadata": {
+    "reported": {
+      "truncated": {
+        "timestamp": 1795450330
+      }
+    }
+  },
+  "version": 42
+}

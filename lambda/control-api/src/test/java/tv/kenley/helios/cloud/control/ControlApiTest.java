@@ -103,6 +103,8 @@ class ControlApiTest {
         "pocket", ControlApi.route("GET", BASE + "/streams/pocket").orElseThrow().streamId());
     assertEquals(
         "GetDeviceLocation", ControlApi.route("GET", BASE + "/location").orElseThrow().operation());
+    assertEquals(
+        "GetDeviceUplinks", ControlApi.route("GET", BASE + "/uplinks").orElseThrow().operation());
     assertTrue(ControlApi.route("DELETE", BASE).isEmpty());
     assertTrue(ControlApi.route("GET", BASE + "/streams/pocket/status").isEmpty(), "not yet");
     assertEquals(404, call("GET", "/v1/admin/devices", "").status());
@@ -142,6 +144,44 @@ class ControlApiTest {
     assertTrue(line.contains("\"operation\":\"GetDeviceLocation\""), line);
     assertTrue(line.contains("\"result\":\"ok\""), line);
     assertFalse(line.contains("12.34") || line.contains("98.76"), "no position in " + line);
+    assertTrue(errors.isEmpty(), errors.toString());
+  }
+
+  @Test
+  void readsUplinksWithPublicAddressesOnlyWhenAsked() {
+    assertEquals(409, call("GET", BASE + "/uplinks", "").status(), "no net shadow yet");
+    shadows.documents.put(
+        DeviceDirectoryTest.THING + "/net", StreamShadowTest.fixture("net-shadow-uplinks.json"));
+    shadows.documents.put(
+        DeviceDirectoryTest.THING + "/stream", StreamShadowTest.fixture("stream-shadow-bond.json"));
+
+    RestJson.Response plain = call("GET", BASE + "/uplinks", "");
+    assertEquals(200, plain.status());
+    for (String field :
+        List.of(
+            "\"interface\":\"wlP2p33s0\"",
+            "\"sharesPublicAddressWith\":[\"enP4p65s0\"]",
+            "\"state\":\"standby\"",
+            "\"reportedAt\":")) {
+      assertTrue(plain.body().contains(field), field + " in " + plain.body());
+    }
+    assertFalse(plain.body().contains("203.0.113"), "no public address: " + plain.body());
+
+    RestJson.Response full =
+        call("GET", BASE + "/uplinks", "", Map.of("includePublicAddresses", "true"));
+    assertEquals(200, full.status());
+    assertTrue(full.body().contains("\"address\":\"203.0.113.7\""), full.body());
+    assertFalse(
+        call("GET", BASE + "/uplinks", "", Map.of("includePublicAddresses", "false"))
+            .body()
+            .contains("203.0.113"));
+    assertEquals(
+        400, call("GET", BASE + "/uplinks", "", Map.of("includePublicAddresses", "yes")).status());
+
+    for (String line : audit) {
+      assertFalse(line.contains("203.0.113.7") || line.contains("198.51.100.9"), line);
+    }
+    assertTrue(audit.getLast().contains("\"operation\":\"GetDeviceUplinks\""), audit.getLast());
     assertTrue(errors.isEmpty(), errors.toString());
   }
 

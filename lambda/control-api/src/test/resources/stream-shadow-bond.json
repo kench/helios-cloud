@@ -1,0 +1,36 @@
+{
+  "state": {
+    "reported": {
+      "outputs": {
+        "bond": {
+          "state": "up",
+          "local_port": 5000,
+          "uplinks": [
+            "10.64.12.9",
+            "172.20.10.2",
+            "192.168.5.31"
+          ],
+          "standby": [
+            {
+              "interface": "wlP2p33s0",
+              "address": "192.168.5.12",
+              "shares_public_address_with": "enP4p65s0"
+            }
+          ],
+          "active_links": 3,
+          "total_links": 3
+        },
+        "old": {
+          "state": "stopped",
+          "uplinks": [
+            "192.168.5.12"
+          ],
+          "standby": []
+        },
+        "direct": {
+          "state": "up"
+        }
+      }
+    }
+  }
+}

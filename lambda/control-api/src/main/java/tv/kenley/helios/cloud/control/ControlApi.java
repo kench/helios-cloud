@@ -14,6 +14,7 @@ import tv.kenley.helios.cloud.common.RestJson;
 import tv.kenley.helios.cloud.control.model.DeleteWifiNetworkInput;
 import tv.kenley.helios.cloud.control.model.GetDeviceInput;
 import tv.kenley.helios.cloud.control.model.GetDeviceLocationInput;
+import tv.kenley.helios.cloud.control.model.GetDeviceUplinksInput;
 import tv.kenley.helios.cloud.control.model.GetStreamInput;
 import tv.kenley.helios.cloud.control.model.ListDevicesInput;
 import tv.kenley.helios.cloud.control.model.ListInputsInput;
@@ -42,6 +43,7 @@ final class ControlApi {
   private static final Pattern INPUTS = Pattern.compile(DEVICE + "/inputs$");
   private static final Pattern PROFILES = Pattern.compile(DEVICE + "/profiles$");
   private static final Pattern LOCATION = Pattern.compile(DEVICE + "/location$");
+  private static final Pattern UPLINKS = Pattern.compile(DEVICE + "/uplinks$");
   private static final Pattern WIFI = Pattern.compile(DEVICE + "/wifi/networks$");
   private static final Pattern STREAMS = Pattern.compile(DEVICE + "/streams$");
   private static final Pattern ONE_STREAM = Pattern.compile(STREAM + "$");
@@ -118,6 +120,22 @@ final class ControlApi {
                   RestJson.decode(
                       new byte[0], GetDeviceLocationInput.builder(), b -> b.deviceId(device));
               yield RestJson.ok(200, service.getDeviceLocation(input.getDeviceId()));
+            }
+            case "GetDeviceUplinks" -> {
+              GetDeviceUplinksInput input =
+                  RestJson.decode(
+                      new byte[0],
+                      GetDeviceUplinksInput.builder(),
+                      b ->
+                          b.deviceId(device)
+                              .includePublicAddresses(
+                                  bool(
+                                      "includePublicAddresses",
+                                      query.get("includePublicAddresses"))));
+              yield RestJson.ok(
+                  200,
+                  service.getDeviceUplinks(
+                      input.getDeviceId(), Boolean.TRUE.equals(input.isIncludePublicAddresses())));
             }
             case "ListWifiNetworks" -> {
               ListWifiNetworksInput input =
@@ -212,6 +230,20 @@ final class ControlApi {
     }
   }
 
+  private static Boolean bool(String name, String text) {
+    if (text == null) {
+      return null;
+    }
+    return switch (text) {
+      case "true" -> true;
+      case "false" -> false;
+      default ->
+          throw software.amazon.smithy.java.framework.model.ValidationException.builder()
+              .message(name + " must be true or false.")
+              .build();
+    };
+  }
+
   record Route(String operation, String deviceId, String streamId) {}
 
   static Optional<Route> route(String method, String path) {
@@ -224,6 +256,7 @@ final class ControlApi {
             new Rule("GET", INPUTS, "ListInputs"),
             new Rule("GET", PROFILES, "ListProfiles"),
             new Rule("GET", LOCATION, "GetDeviceLocation"),
+            new Rule("GET", UPLINKS, "GetDeviceUplinks"),
             new Rule("GET", WIFI, "ListWifiNetworks"),
             new Rule("PUT", WIFI, "SetWifiNetwork"),
             new Rule("DELETE", WIFI, "DeleteWifiNetwork"),

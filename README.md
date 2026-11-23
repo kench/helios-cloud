@@ -162,6 +162,14 @@ shadow into the contract's fix, last fix, receivers and satellites (`GpsShadow.j
 `DeviceStateUnavailable` when the device has never reported gps. It returns the device's exact
 position, so nothing logs it: the audit line has the operation and result only.
 
+Uplinks (LLD 3): `GetDeviceUplinks` (`GET …/devices/{deviceId}/uplinks`) reads the `net` shadow's
+interfaces and the `stream` shadow's SRTLA outputs (`UplinksShadow.java`): each interface's kind,
+state, IPv4 addresses, default-route metric, source routing, Wi-Fi network, public IPv4 check, and
+whether each running bond has it bonded or in standby. Public addresses are personal data: the
+address is returned only with `?includePublicAddresses=true` and never logged;
+`sharesPublicAddressWith` (interface names) always comes back. 409 `DeviceStateUnavailable` when
+the device has never reported its interfaces.
+
 Wi-Fi networks (LLD 3, section 10): `ListWifiNetworks` reads the `net` shadow; `SetWifiNetwork`
 and `DeleteWifiNetwork` are **AWS IoT command executions**, not shadow writes (LLD 2, section
 7.3): the stack defines the commands `helios-net-wifi-set-v1` and `helios-net-wifi-remove-v1` (versioned, since AWS can't change a command's payload in place and holds a deleted ID for 12 hours; one payload
