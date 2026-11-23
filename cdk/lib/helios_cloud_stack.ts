@@ -84,6 +84,7 @@ export class HeliosCloudStack extends Stack {
 
     // Operators control devices' streams through the control API.
     this.bootstrap.grantControl(this.operator.operatorRole);
+    this.bootstrap.grantEgress(this.deviceIdentity.deviceRole);
 
     // TEMPORARY: the provisioning role can also send commands, so that a
     // freshly provisioned scanner can be checked end to end (helios.ping)

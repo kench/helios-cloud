@@ -16,7 +16,10 @@ import type {NestedStackProps} from 'aws-cdk-lib';
 import {
   AuthorizationType,
   EndpointType,
+  IpAddressType,
   LambdaIntegration,
+  MockIntegration,
+  PassthroughBehavior,
   RestApi,
 } from 'aws-cdk-lib/aws-apigateway';
 import {
@@ -51,6 +54,14 @@ export const DEVICE_API_HANDLER =
 /** The admin API Lambda's handler (lambda/admin-api). */
 export const ADMIN_API_HANDLER =
   'tv.kenley.helios.cloud.admin.AdminApiHandler::handleRequest';
+
+/**
+ * The egress echo's response (LLD 3, section 3.1): the caller's address as
+ * API Gateway saw it (IPv4 or IPv6), and when, in milliseconds since the
+ * epoch.
+ */
+export const EGRESS_RESPONSE_TEMPLATE =
+  '{"address": "$context.identity.sourceIp", "atMs": $context.requestTimeEpoch}';
 
 /** The control API Lambda's handler (lambda/control-api). */
 export const CONTROL_API_HANDLER =
@@ -303,7 +314,13 @@ export class BootstrapStack extends NestedStack {
     this.api = new RestApi(this, 'Api', {
       restApiName: 'helios-bootstrap',
       description: 'Helios bootstrap service (Bootstrap API)',
-      endpointConfiguration: {types: [EndpointType.REGIONAL]},
+      // Dual-stack (IPv4 and IPv6) on the same execute-api name (LLD 3,
+      // section 3.1). Helios connects with Happy Eyeballs from 0.10.0, so a
+      // board on a network with broken IPv6 still reaches it over IPv4.
+      endpointConfiguration: {
+        types: [EndpointType.REGIONAL],
+        ipAddressType: IpAddressType.DUAL_STACK,
+      },
       // No account-wide API Gateway logging role: that setting is shared
       // with the account's other APIs. The Lambda logs every call.
       cloudWatchRole: false,
@@ -331,6 +348,33 @@ export class BootstrapStack extends NestedStack {
       allowTestInvoke: false,
     });
     const iam = {authorizationType: AuthorizationType.IAM};
+    // The egress echo (LLD 3, section 3.1): the address API Gateway sees a
+    // device's request come from, so Helios learns each uplink's public
+    // address. IAM-signed, and only the device role may call it
+    // (grantEgress). A mock integration: API Gateway answers itself, from
+    // the TCP connection it terminated, so nothing runs and no header a
+    // caller sends can change the answer.
+    this.api.root
+      .getResource('v1')!
+      .getResource('device')!
+      .addResource('egress')
+      .addMethod(
+        'GET',
+        new MockIntegration({
+          passthroughBehavior: PassthroughBehavior.NEVER,
+          requestTemplates: {'application/json': '{"statusCode": 200}'},
+          integrationResponses: [
+            {
+              statusCode: '200',
+              responseTemplates: {
+                'application/json': EGRESS_RESPONSE_TEMPLATE,
+              },
+            },
+          ],
+        }),
+        {...iam, methodResponses: [{statusCode: '200'}]},
+      );
+
     const devices = this.api.root
       .getResource('v1')!
       .addResource('admin')
@@ -389,6 +433,20 @@ export class BootstrapStack extends NestedStack {
       resourceArns: PROVISIONING_ROUTES.map(([method, path]) =>
         this.api.arnForExecuteApi(method, path, BOOTSTRAP_STAGE),
       ),
+    });
+  }
+
+  /**
+   * Lets {@code grantee} (the device role) call the egress echo, and
+   * nothing else here.
+   */
+  grantEgress(grantee: IGrantable): Grant {
+    return Grant.addToPrincipal({
+      grantee,
+      actions: ['execute-api:Invoke'],
+      resourceArns: [
+        this.api.arnForExecuteApi('GET', '/v1/device/egress', BOOTSTRAP_STAGE),
+      ],
     });
   }
 
