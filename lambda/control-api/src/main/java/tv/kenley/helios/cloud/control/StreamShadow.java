@@ -75,8 +75,20 @@ record StreamShadow(Document document) {
    */
   StreamDescription streamWith(String id, Map<String, Object> change) {
     Map<String, Object> desired = new LinkedHashMap<>(desiredOf(id));
-    desired.putAll(change);
+    change.forEach((k, v) ->
+        desired.put(k, "source".equals(k) && v instanceof Map<?, ?> m ? withoutNulls(m) : v));
     return describe(id, desired);
+  }
+
+  /** A source update's fields without its nulls: what the shadow holds once it has merged it. */
+  private static Map<String, Object> withoutNulls(Map<?, ?> fields) {
+    Map<String, Object> kept = new LinkedHashMap<>();
+    fields.forEach((k, v) -> {
+      if (v != ShadowJson.NULL) {
+        kept.put((String) k, v);
+      }
+    });
+    return kept;
   }
 
   /** The desired destination, if set, else the reported one. */
@@ -323,6 +335,23 @@ record StreamShadow(Document document) {
       }
       default -> throw new IllegalArgumentException("unknown source " + source);
     }
+    return fields;
+  }
+
+  /** Every field a source has in shadow form, whatever its type. */
+  private static final List<String> SOURCE_FIELDS =
+      List.of("video", "audio", "camera", "size", "fps");
+
+  /**
+   * The desired-state update that sets {@code source}: its fields, and null for every other source
+   * field. A shadow update merges into what's there, so without the nulls the previous source's
+   * fields (a camera's {@code video} after a switch to a test pattern, or its {@code audio} after a
+   * switch to a camera without one) would stay in desired and the device would refuse the merged
+   * source.
+   */
+  static Map<String, Object> sourceUpdate(Source source) {
+    Map<String, Object> fields = sourceFields(source);
+    SOURCE_FIELDS.forEach(f -> fields.putIfAbsent(f, ShadowJson.NULL));
     return fields;
   }
 

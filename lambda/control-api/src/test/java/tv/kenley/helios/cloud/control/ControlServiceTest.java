@@ -29,6 +29,7 @@ import tv.kenley.helios.cloud.control.model.SetStreamDestinationInput;
 import tv.kenley.helios.cloud.control.model.SettingUnavailable;
 import tv.kenley.helios.cloud.control.model.Source;
 import tv.kenley.helios.cloud.control.model.StreamNotFound;
+import tv.kenley.helios.cloud.control.model.TestSource;
 import tv.kenley.helios.cloud.control.model.UpdateStreamInput;
 
 class ControlServiceTest {
@@ -154,7 +155,8 @@ class ControlServiceTest {
     assertEquals(
         THING
             + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":{"
-            + "\"source\":{\"type\":\"rtmp\"},\"profile\":\"cam\",\"bitrate_kbps\":2500,"
+            + "\"source\":{\"type\":\"rtmp\",\"video\":null,\"audio\":null,\"camera\":null,"
+            + "\"size\":null,\"fps\":null},\"profile\":\"cam\",\"bitrate_kbps\":2500,"
             + "\"source_ceiling_percent\":60}}}}}",
         shadows.updates.getLast());
 
@@ -170,6 +172,33 @@ class ControlServiceTest {
             + "/stream {\"state\":{\"desired\":{\"streams\":{\"backpack\":"
             + "{\"bitrate_kbps\":null}}}},\"clientToken\":\"tok-2\"}",
         shadows.updates.getLast());
+  }
+
+  @Test
+  void clearsThePreviousSourcesFields() {
+    // pocket's desired source is rtmp camera 1: a switch to a test pattern must clear `camera`, or
+    // the shadow's merge leaves it there and the device refuses the merged source.
+    streamShadow("stream-shadow-control.json");
+    var updated =
+        service.update(
+            UpdateStreamInput.builder()
+                .deviceId(ID)
+                .streamId("pocket")
+                .source(
+                    Source.builder()
+                        .test(TestSource.builder().size("1280x720").fps(30).build())
+                        .build())
+                .build());
+    assertEquals(
+        THING
+            + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":{\"source\":"
+            + "{\"type\":\"test\",\"size\":\"1280x720\",\"fps\":30,\"video\":null,"
+            + "\"audio\":null,\"camera\":null}}}}}}",
+        shadows.updates.getLast());
+    assertEquals(
+        Source.builder().test(TestSource.builder().size("1280x720").fps(30).build()).build(),
+        updated.getStream().getDesired().getSource(),
+        "the answer shows the source as the shadow will hold it, without the nulls");
   }
 
   @Test
