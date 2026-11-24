@@ -162,7 +162,7 @@ final class ControlService {
             .message("The device doesn't report this source among its inputs.")
             .build();
       }
-      desired.put("source", StreamShadow.sourceFields(input.getSource()));
+      desired.put("source", StreamShadow.sourceUpdate(input.getSource()));
     }
     if (input.getProfile() != null) {
       if (!shadow.hasProfile(input.getProfile())) {
