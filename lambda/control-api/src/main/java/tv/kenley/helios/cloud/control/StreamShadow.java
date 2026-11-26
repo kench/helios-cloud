@@ -20,6 +20,8 @@ import tv.kenley.helios.cloud.control.model.DesiredState;
 import tv.kenley.helios.cloud.control.model.EncoderFigures;
 import tv.kenley.helios.cloud.control.model.Input;
 import tv.kenley.helios.cloud.control.model.ProfileDescription;
+import tv.kenley.helios.cloud.control.model.RecordingState;
+import tv.kenley.helios.cloud.control.model.RecordingStorage;
 import tv.kenley.helios.cloud.control.model.RejectedSetting;
 import tv.kenley.helios.cloud.control.model.RtmpIngestInput;
 import tv.kenley.helios.cloud.control.model.RtmpPublisher;
@@ -27,6 +29,7 @@ import tv.kenley.helios.cloud.control.model.RtmpSource;
 import tv.kenley.helios.cloud.control.model.Source;
 import tv.kenley.helios.cloud.control.model.StreamDescription;
 import tv.kenley.helios.cloud.control.model.StreamDesired;
+import tv.kenley.helios.cloud.control.model.StreamRecording;
 import tv.kenley.helios.cloud.control.model.StreamReported;
 import tv.kenley.helios.cloud.control.model.StreamState;
 import tv.kenley.helios.cloud.control.model.TestPatternInput;
@@ -123,6 +126,7 @@ record StreamShadow(Document document) {
     ShadowJson.string(doc.get(), "destination").ifPresent(v -> desired.put("destination", v));
     ShadowJson.integer(doc.get(), "source_ceiling_percent")
         .ifPresent(v -> desired.put("source_ceiling_percent", v));
+    ShadowJson.bool(doc.get(), "record").ifPresent(v -> desired.put("record", v));
     return desired;
   }
 
@@ -159,6 +163,9 @@ record StreamShadow(Document document) {
     }
     if (desired.get("source_ceiling_percent") instanceof Integer percent) {
       desiredShape.sourceCeilingPercent(percent);
+    }
+    if (desired.get("record") instanceof Boolean record) {
+      desiredShape.record(record);
     }
 
     StreamDescription.Builder stream =
@@ -209,6 +216,11 @@ record StreamShadow(Document document) {
       Integer have = ShadowJson.integer(r, "bitrate_override_kbps").orElse(null);
       differs.add(want == ShadowJson.NULL ? have != null : !Objects.equals(want, have));
     }
+    if (desired.get("record") instanceof Boolean want && !refused.contains("record")) {
+      // A device that doesn't report recordings never catches up.
+      Optional<String> have = ShadowJson.string(r, "recording", "state");
+      differs.add(have.isEmpty() || want == "off".equals(have.get()));
+    }
     return differs.contains(true);
   }
 
@@ -258,7 +270,52 @@ record StreamShadow(Document document) {
         .flatMap(output ->
             ShadowJson.integer(document, "state", "reported", "outputs", output, "active_links"))
         .ifPresent(reported::activeLinks);
+    ShadowJson.at(r, "recording")
+        .filter(ShadowJson::isMap)
+        .flatMap(StreamShadow::recordingOf)
+        .ifPresent(reported::recording);
     return Optional.of(reported.build());
+  }
+
+  /** A stream's recording, if its state is one the contract knows. */
+  private static Optional<StreamRecording> recordingOf(Document d) {
+    Optional<RecordingState> state =
+        ShadowJson.string(d, "state")
+            .filter(s -> RecordingState.values().stream().anyMatch(k -> k.getValue().equals(s)))
+            .map(RecordingState::from);
+    if (state.isEmpty()) {
+      return Optional.empty();
+    }
+    StreamRecording.Builder recording = StreamRecording.builder().state(state.get());
+    ShadowJson.string(d, "files").ifPresent(recording::files);
+    ShadowJson.string(d, "segment").ifPresent(recording::segment);
+    ShadowJson.string(d, "since").flatMap(StreamShadow::instant).ifPresent(recording::since);
+    ShadowJson.string(d, "last_error").ifPresent(recording::lastError);
+    return Optional.of(recording.build());
+  }
+
+  /** The device's recordings storage, if it reports one (Helios 0.15.0 and later). */
+  Optional<RecordingStorage> recordingStorage() {
+    Optional<Document> doc =
+        ShadowJson.at(document, "state", "reported", "recording").filter(ShadowJson::isMap);
+    if (doc.isEmpty()) {
+      return Optional.empty();
+    }
+    Document d = doc.get();
+    Optional<String> dir = ShadowJson.string(d, "dir");
+    Optional<Boolean> mounted = ShadowJson.bool(d, "mounted");
+    Optional<Boolean> full = ShadowJson.bool(d, "full");
+    if (dir.isEmpty() || mounted.isEmpty() || full.isEmpty()) {
+      return Optional.empty();
+    }
+    RecordingStorage.Builder storage =
+        RecordingStorage.builder().dir(dir.get()).mounted(mounted.get()).full(full.get());
+    ShadowJson.whole(d, "total_bytes").ifPresent(storage::totalBytes);
+    ShadowJson.whole(d, "free_bytes").ifPresent(storage::freeBytes);
+    ShadowJson.integer(d, "segments").ifPresent(storage::segments);
+    ShadowJson.string(d, "oldest").flatMap(StreamShadow::instant).ifPresent(storage::oldest);
+    ShadowJson.string(d, "last_error").ifPresent(storage::lastError);
+    return Optional.of(storage.build());
   }
 
   private static EncoderFigures encoderOf(Document e) {
