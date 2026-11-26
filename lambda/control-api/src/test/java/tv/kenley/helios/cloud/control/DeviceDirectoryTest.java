@@ -67,7 +67,7 @@ class DeviceDirectoryTest {
     when(db.scan(any(ScanRequest.class)))
         .thenReturn(
             ScanResponse.builder()
-                .items(item(ID, "relay"), Map.of("deviceId", AttributeValue.fromS("broken")))
+                .items(item(ID, "transcoder"), Map.of("deviceId", AttributeValue.fromS("broken")))
                 .lastEvaluatedKey(Map.of("deviceId", AttributeValue.fromS(ID)))
                 .build())
         .thenReturn(ScanResponse.builder().items(item(ID, "scanner")).build());

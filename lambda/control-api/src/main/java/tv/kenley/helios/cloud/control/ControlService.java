@@ -123,9 +123,11 @@ final class ControlService {
 
   ListStreamsOutput listStreams(String deviceId) {
     StreamShadow shadow = reportedShadow(deviceId);
-    return ListStreamsOutput.builder()
-        .streams(shadow.streamIds().stream().map(shadow::stream).toList())
-        .build();
+    ListStreamsOutput.Builder output =
+        ListStreamsOutput.builder()
+            .streams(shadow.streamIds().stream().map(shadow::stream).toList());
+    shadow.recordingStorage().ifPresent(output::recording);
+    return output.build();
   }
 
   GetStreamOutput getStream(String deviceId, String streamId) {
@@ -147,7 +149,7 @@ final class ControlService {
   }
 
   /**
-   * Source, profile, bitrate and ceiling, each only if given.
+   * Source, profile, bitrate, ceiling and recording, each only if given.
    *
    * @throws SettingUnavailable if the device reports its inputs or profiles and doesn't have the
    *     source or profile asked for
@@ -182,6 +184,9 @@ final class ControlService {
     }
     if (input.getSourceCeilingPercent() != null) {
       desired.put("source_ceiling_percent", input.getSourceCeilingPercent());
+    }
+    if (input.isRecord() != null) {
+      desired.put("record", input.isRecord());
     }
     Change change =
         write(input.getDeviceId(), shadow, input.getStreamId(), desired, input.getClientToken());

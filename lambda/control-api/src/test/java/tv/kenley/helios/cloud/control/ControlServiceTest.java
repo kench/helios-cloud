@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +25,7 @@ import tv.kenley.helios.cloud.control.model.DeviceStateUnavailable;
 import tv.kenley.helios.cloud.control.model.DeviceStatus;
 import tv.kenley.helios.cloud.control.model.DeviceSummary;
 import tv.kenley.helios.cloud.control.model.InvalidDestination;
+import tv.kenley.helios.cloud.control.model.RecordingState;
 import tv.kenley.helios.cloud.control.model.RtmpSource;
 import tv.kenley.helios.cloud.control.model.SetStreamDestinationInput;
 import tv.kenley.helios.cloud.control.model.SettingUnavailable;
@@ -172,6 +174,46 @@ class ControlServiceTest {
             + "/stream {\"state\":{\"desired\":{\"streams\":{\"backpack\":"
             + "{\"bitrate_kbps\":null}}}},\"clientToken\":\"tok-2\"}",
         shadows.updates.getLast());
+  }
+
+  @Test
+  void switchesRecordingAndReportsIt() {
+    streamShadow("stream-shadow-recording.json");
+    var listed = service.listStreams(ID);
+    var storage = listed.getRecording();
+    assertEquals("/var/lib/helios-stream/recordings", storage.getDir());
+    assertTrue(storage.isMounted());
+    assertEquals(false, storage.isFull());
+    assertEquals(118_000_000_000L, storage.getFreeBytes());
+    assertEquals(125_371_473_920L, storage.getTotalBytes());
+    assertEquals(4, storage.getSegments());
+    assertEquals(Instant.parse("2026-11-26T10:25:00Z"), storage.getOldest());
+
+    var pocket = service.getStream(ID, "pocket").getStream();
+    var recording = pocket.getReported().getRecording();
+    assertEquals(RecordingState.RECORDING, recording.getState());
+    assertEquals("pocket/20261126T101500Z-*.ts", recording.getFiles());
+    assertEquals("20261126T101500Z-00003.ts", recording.getSegment());
+    assertEquals(Instant.parse("2026-11-26T10:15:00Z"), recording.getSince());
+    assertEquals(false, pocket.getDesired().isRecord());
+    assertTrue(pocket.isPending(), "desired off, still recording");
+
+    // backpack: desired on, reported idle (set to record, not running): caught up.
+    var backpack = service.getStream(ID, "backpack").getStream();
+    assertEquals(true, backpack.getDesired().isRecord());
+    assertEquals(RecordingState.IDLE, backpack.getReported().getRecording().getState());
+    assertEquals(false, backpack.isPending());
+    // A state this contract doesn't know is left out.
+    assertNull(service.getStream(ID, "pattern").getStream().getReported().getRecording());
+
+    service.update(
+        UpdateStreamInput.builder().deviceId(ID).streamId("pattern").record(true).build());
+    assertEquals(
+        THING + "/stream {\"state\":{\"desired\":{\"streams\":{\"pattern\":{\"record\":true}}}}}",
+        shadows.updates.getLast());
+    // Reported without a recording (an older device): never caught up.
+    streamShadow("stream-shadow-control.json");
+    assertNull(service.listStreams(ID).getRecording());
   }
 
   @Test
