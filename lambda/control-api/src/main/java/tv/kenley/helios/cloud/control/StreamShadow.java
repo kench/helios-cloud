@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeSet;
 import software.amazon.smithy.java.core.schema.Unit;
@@ -22,7 +21,6 @@ import tv.kenley.helios.cloud.control.model.Input;
 import tv.kenley.helios.cloud.control.model.ProfileDescription;
 import tv.kenley.helios.cloud.control.model.RecordingState;
 import tv.kenley.helios.cloud.control.model.RecordingStorage;
-import tv.kenley.helios.cloud.control.model.RejectedSetting;
 import tv.kenley.helios.cloud.control.model.RtmpIngestInput;
 import tv.kenley.helios.cloud.control.model.RtmpPublisher;
 import tv.kenley.helios.cloud.control.model.RtmpSource;
@@ -37,10 +35,11 @@ import tv.kenley.helios.cloud.control.model.TestSource;
 import tv.kenley.helios.cloud.control.model.VideoFormat;
 
 /**
- * A device's {@code stream} shadow, read into the Control API's types and changed through its
- * desired state (HLD section 7.3.7). Field names are the stream daemon's. Anything missing or of
- * the wrong type is left out rather than failing the request, so a device whose Helios predates a
- * field still works for the rest.
+ * A device's {@code stream} shadow, read into the Control API's types. The shadow is reported-only
+ * (the page "Helios - State Management: Tenets and Practices"): changes are commands ({@link
+ * StreamCommands}). Field names are the stream daemon's. Anything missing or of the wrong type is
+ * left out rather than failing the request, so a device whose Helios predates a field still works
+ * for the rest.
  *
  * @param document the whole shadow document ({@code state}, {@code version}...), or {@code null} if
  *     the device has none
@@ -62,7 +61,7 @@ record StreamShadow(Document document) {
         new TreeSet<>(ShadowJson.map(document, "state", "reported", "streams").keySet()));
   }
 
-  /** Whether the shadow holds desired state for stream {@code id}. */
+  /** Whether the shadow holds desired state for stream {@code id} (left from before commands). */
   boolean hasDesired(String id) {
     return ShadowJson.at(document, "state", "desired", "streams", id).isPresent();
   }
@@ -72,59 +71,16 @@ record StreamShadow(Document document) {
     return ShadowJson.at(document, "state", "reported", "streams", id).isPresent();
   }
 
-  /** Stream {@code id}, desired and reported. */
-  StreamDescription stream(String id) {
-    return describe(id, desiredOf(id));
-  }
-
-  /**
-   * Stream {@code id} as it will be once {@code change} (desired members, in shadow form) is
-   * written: the response to a change, without reading the shadow again.
-   */
-  StreamDescription streamWith(String id, Map<String, Object> change) {
-    Map<String, Object> desired = new LinkedHashMap<>(desiredOf(id));
-    change.forEach((k, v) ->
-        desired.put(k, "source".equals(k) && v instanceof Map<?, ?> m ? withoutNulls(m) : v));
-    return describe(id, desired);
-  }
-
-  /** A source update's fields without its nulls: what the shadow holds once it has merged it. */
-  private static Map<String, Object> withoutNulls(Map<?, ?> fields) {
-    Map<String, Object> kept = new LinkedHashMap<>();
-    fields.forEach((k, v) -> {
-      if (v != ShadowJson.NULL) {
-        kept.put((String) k, v);
-      }
-    });
-    return kept;
-  }
-
   /** The destination the device reports for stream {@code id}. */
   Optional<String> reportedDestination(String id) {
     return reportedStream(id).flatMap(r -> ShadowJson.string(r, "destination"));
   }
 
-  /** The desired destination, if set, else the reported one. */
-  Optional<String> destination(String id) {
-    return ShadowJson.string(document, "state", "desired", "streams", id, "destination")
-        .or(() -> reportedStream(id).flatMap(r -> ShadowJson.string(r, "destination")));
-  }
-
-  // --- Reading desired state -------------------------------------------------------------------
+  // --- What this API set ------------------------------------------------------------------------
 
   /**
-   * The desired members for stream {@code id}, in shadow form ({@code null}s as ShadowJson.NULL).
-   */
-  private Map<String, Object> desiredOf(String id) {
-    return ShadowJson.at(document, "state", "desired", "streams", id)
-        .map(StreamShadow::settingsOf)
-        .orElseGet(LinkedHashMap::new);
-  }
-
-  /**
-   * Settings in shadow form ({@code null}s as ShadowJson.NULL) from a desired-state block or the
-   * settings store's record of a stream: state, bitrate_kbps, source, profile, destination,
-   * source_ceiling_percent, record.
+   * Settings in shadow form ({@code null}s as ShadowJson.NULL) from the settings store's record of
+   * a stream: state, bitrate_kbps, source, profile, destination, source_ceiling_percent, record.
    */
   static Map<String, Object> settingsOf(Document block) {
     Map<String, Object> desired = new LinkedHashMap<>();
@@ -149,29 +105,15 @@ record StreamShadow(Document document) {
   }
 
   /**
-   * Stream {@code id} on a device that takes stream commands: {@code settings} is what this API
-   * last set (the settings store's record, in shadow form), never pending; reported is {@code
-   * status} (a command's answer) when given, else the shadow's.
+   * Stream {@code id}: {@code desired} is what this API last set (the settings store's record, in
+   * shadow form); reported is {@code status} (a command's answer) when given, else the shadow's.
+   * The contract's deprecated {@code pending} is always false, and {@code rejected} is never set: a
+   * command answers refusals itself.
    */
-  StreamDescription commanded(String id, Map<String, Object> settings, Optional<Document> status) {
-    return describe(id, settings, status.or(() -> reportedStream(id)), true);
-  }
-
-  private StreamDescription describe(String id, Map<String, Object> desired) {
-    return describe(id, desired, reportedStream(id), false);
-  }
-
-  // `pending` is deprecated in the contract but still required: false for devices on commands.
+  // `pending` is deprecated in the contract but still required.
   @SuppressWarnings("deprecation")
-  private StreamDescription describe(
-      String id, Map<String, Object> desired, Optional<Document> reportedDoc, boolean commands) {
-    final Optional<StreamReported> reported = reportedDoc.flatMap(this::reportedOf);
-    final List<RejectedSetting> rejected =
-        reportedDoc.map(r -> ShadowJson.list(r, "rejected")).orElse(List.of()).stream()
-            .map(StreamShadow::rejectedOf)
-            .flatMap(Optional::stream)
-            .toList();
-
+  StreamDescription commanded(String id, Map<String, Object> desired, Optional<Document> status) {
+    final Optional<Document> reportedDoc = status.or(() -> reportedStream(id));
     StreamDesired.Builder desiredShape = StreamDesired.builder();
     String state =
         (String)
@@ -202,59 +144,9 @@ record StreamShadow(Document document) {
     }
 
     StreamDescription.Builder stream =
-        StreamDescription.builder()
-            .streamId(id)
-            .desired(desiredShape.build())
-            .pending(!commands && pending(desired, reportedDoc, rejected));
-    reported.ifPresent(stream::reported);
-    if (!rejected.isEmpty()) {
-      stream.rejected(rejected);
-    }
+        StreamDescription.builder().streamId(id).desired(desiredShape.build()).pending(false);
+    reportedDoc.flatMap(this::reportedOf).ifPresent(stream::reported);
     return stream.build();
-  }
-
-  /**
-   * Whether a desired value differs from what the device reports and the device hasn't refused it.
-   * Only members set through the API count.
-   */
-  private static boolean pending(
-      Map<String, Object> desired, Optional<Document> reported, List<RejectedSetting> rejected) {
-    if (reported.isEmpty()) {
-      return !desired.isEmpty();
-    }
-    Document r = reported.get();
-    List<String> refused = rejected.stream().map(RejectedSetting::getSetting).toList();
-    List<Boolean> differs = new ArrayList<>();
-    if (desired.containsKey("state")) {
-      differs.add(
-          !Objects.equals(desired.get("state"), ShadowJson.string(r, "desired").orElse(null)));
-    }
-    if (desired.containsKey("profile") && !refused.contains("profile")) {
-      differs.add(
-          !Objects.equals(desired.get("profile"), ShadowJson.string(r, "profile").orElse(null)));
-    }
-    if (desired.containsKey("destination") && !refused.contains("destination")) {
-      differs.add(
-          !Objects.equals(
-              desired.get("destination"), ShadowJson.string(r, "destination").orElse(null)));
-    }
-    if (desired.containsKey("source") && !refused.contains("source")) {
-      differs.add(
-          !sourceMatches(
-              desired.get("source"),
-              ShadowJson.at(r, "source").map(StreamShadow::sourceFields).orElse(null)));
-    }
-    if (desired.containsKey("bitrate_kbps") && !refused.contains("bitrate")) {
-      Object want = desired.get("bitrate_kbps");
-      Integer have = ShadowJson.integer(r, "bitrate_override_kbps").orElse(null);
-      differs.add(want == ShadowJson.NULL ? have != null : !Objects.equals(want, have));
-    }
-    if (desired.get("record") instanceof Boolean want && !refused.contains("record")) {
-      // A device that doesn't report recordings never catches up.
-      Optional<String> have = ShadowJson.string(r, "recording", "state");
-      differs.add(have.isEmpty() || want == "off".equals(have.get()));
-    }
-    return differs.contains(true);
   }
 
   // --- Reading reported state ------------------------------------------------------------------
@@ -361,22 +253,11 @@ record StreamShadow(Document document) {
     return encoder.build();
   }
 
-  private static Optional<RejectedSetting> rejectedOf(Document r) {
-    Optional<String> setting = ShadowJson.string(r, "setting");
-    Optional<String> reason = ShadowJson.string(r, "reason");
-    Optional<Instant> at = ShadowJson.string(r, "at").flatMap(StreamShadow::instant);
-    if (setting.isEmpty() || reason.isEmpty() || at.isEmpty()) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        RejectedSetting.builder().setting(setting.get()).reason(reason.get()).at(at.get()).build());
-  }
-
   // --- Sources, in shadow form ({"type": ...}) and as the API's union -------------------------
 
   /**
-   * A source's identifying fields in shadow form, for comparing desired and reported (the device
-   * adds the camera's details to its reported source; those don't count).
+   * A source's identifying fields in shadow form (the device adds the camera's details to its
+   * reported source; those are left out).
    */
   static Map<String, Object> sourceFields(Document source) {
     Map<String, Object> fields = new LinkedHashMap<>();
@@ -428,10 +309,6 @@ record StreamShadow(Document document) {
     return fields;
   }
 
-  /** Every field a source has in shadow form, whatever its type. */
-  private static final List<String> SOURCE_FIELDS =
-      List.of("video", "audio", "camera", "size", "fps");
-
   /** {@code source} as a stream command takes it: the Control API's union, snake_case. */
   static Map<String, Object> sourceArg(Source source) {
     Map<String, Object> inner = new LinkedHashMap<>();
@@ -460,35 +337,6 @@ record StreamShadow(Document document) {
       default -> throw new IllegalArgumentException("unknown source " + source);
     }
     return Map.of(kind, inner);
-  }
-
-  /**
-   * The desired-state update that sets {@code source}: its fields, and null for every other source
-   * field. A shadow update merges into what's there, so without the nulls the previous source's
-   * fields (a camera's {@code video} after a switch to a test pattern, or its {@code audio} after a
-   * switch to a camera without one) would stay in desired and the device would refuse the merged
-   * source.
-   */
-  static Map<String, Object> sourceUpdate(Source source) {
-    Map<String, Object> fields = sourceFields(source);
-    SOURCE_FIELDS.forEach(f -> fields.putIfAbsent(f, ShadowJson.NULL));
-    return fields;
-  }
-
-  /**
-   * Whether the reported source is the desired one. A test pattern compares only the fields given:
-   * the device fills in its size and rate when they're left out. A camera's or RTMP source's fields
-   * are compared in full, since a missing {@code audio} or {@code camera} means none.
-   */
-  static boolean sourceMatches(Object desired, Map<String, Object> reported) {
-    if (!(desired instanceof Map<?, ?> want) || reported == null) {
-      return Objects.equals(desired, reported);
-    }
-    if (!"test".equals(want.get("type"))) {
-      return want.equals(reported);
-    }
-    return want.entrySet().stream()
-        .allMatch(e -> Objects.equals(e.getValue(), reported.get(e.getKey())));
   }
 
   /** The API's source for {@code fields} (shadow form), if it's one the API knows. */

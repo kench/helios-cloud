@@ -32,6 +32,8 @@ class ControlApiTest {
   private final List<String> errors = new ArrayList<>();
   private ControlApi api;
   private final WifiControlTest.FakeCommands commands = new WifiControlTest.FakeCommands();
+  private final StreamCommandsTest.MemorySettings settings =
+      new StreamCommandsTest.MemorySettings();
 
   @BeforeEach
   void setUp() {
@@ -50,7 +52,7 @@ class ControlApiTest {
                     .status(DeviceStatus.ACTIVE)
                     .build()));
     when(devices.list(null, 2)).thenReturn(new DeviceDirectory.Page(List.of(), null));
-    api = api(new ControlService(devices, shadows));
+    api = api(ControlServiceTest.service(devices, shadows, commands, settings));
   }
 
   private ControlApi api(ControlService service) {
@@ -186,7 +188,11 @@ class ControlApiTest {
   }
 
   @Test
-  void answersChangesWith202AndAudits() {
+  void answersChangesWith202AndAudits() throws java.security.GeneralSecurityException {
+    StreamCommandsTest.reportKey(shadows, StreamCommandsTest.keyPair());
+    for (int i = 0; i < 4; i++) {
+      commands.answer(StreamCommandsTest.succeeded(StreamCommandsTest.STATUS));
+    }
     assertEquals(202, call("POST", BASE + "/streams/pocket/start", "").status());
     assertEquals(
         202, call("POST", BASE + "/streams/pocket/stop", "{\"clientToken\":\"t-1\"}").status());
@@ -266,7 +272,7 @@ class ControlApiTest {
             throw new IllegalStateException("throttled");
           }
         };
-    api = api(new ControlService(devices, broken));
+    api = api(ControlServiceTest.service(devices, broken, commands, settings));
     RestJson.Response response = call("GET", BASE + "/streams", "");
     assertEquals(500, response.status());
     assertEquals("InternalError", response.headers().get("X-Amzn-Errortype"));

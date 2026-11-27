@@ -62,24 +62,31 @@ class StreamShadowTest {
     assertTrue(s.reported());
     assertEquals(41, s.version());
     assertEquals(List.of("pocket"), s.streamIds());
-    StreamDescription pocket = s.stream("pocket");
-    assertEquals(DesiredState.LIVE, pocket.getDesired().getState());
+    StreamDescription pocket = s.commanded("pocket", Map.of(), Optional.empty());
+    assertEquals(DesiredState.LIVE, pocket.getDesired().getState(), "the device's own");
     assertNull(pocket.getReported(), "no destination reported yet");
     assertFalse(pocket.isPending());
-    assertTrue(s.streamWith("pocket", Map.of("state", "stopped")).isPending());
     assertFalse(s.reportsInputs());
     assertFalse(s.reportsProfiles());
     assertTrue(s.offers(rtmp("ingest-9")), "no inputs reported: the device decides");
     assertTrue(s.hasProfile("anything"));
-    assertEquals(Optional.empty(), s.destination("pocket"));
+    assertEquals(Optional.empty(), s.reportedDestination("pocket"));
   }
 
   @Test
-  void readsDesiredAndReportedState() {
+  void showsWhatWasSetBesideTheReportedState() {
     StreamShadow s = shadow("stream-shadow-control.json");
     assertEquals(42, s.version());
     assertEquals(List.of("backpack", "pattern", "pocket"), s.streamIds());
-    StreamDescription pocket = s.stream("pocket");
+    assertTrue(s.hasDesired("pocket"), "left in the shadow from before commands");
+    Map<String, Object> set = new java.util.LinkedHashMap<>();
+    set.put("state", "live");
+    set.put("source", Map.of("type", "rtmp", "camera", 1));
+    set.put("profile", "hevc-720p");
+    set.put("destination", POCKET_URL);
+    set.put("bitrate_kbps", 3000);
+    set.put("source_ceiling_percent", 70);
+    StreamDescription pocket = s.commanded("pocket", set, Optional.empty());
     assertEquals(DesiredState.LIVE, pocket.getDesired().getState());
     assertEquals(rtmp("ingest-1"), pocket.getDesired().getSource());
     assertEquals("hevc-720p", pocket.getDesired().getProfile());
@@ -102,73 +109,25 @@ class StreamShadowTest {
     assertEquals(29.97f, reported.getEncoder().getFps());
     assertEquals(2L, reported.getEncoder().getDupFrames());
 
-    assertEquals(1, pocket.getRejected().size(), "the malformed entry is dropped");
-    assertEquals("profile", pocket.getRejected().getFirst().getSetting());
-    assertFalse(pocket.isPending(), "the only difference, the profile, was rejected");
+    assertTrue(
+        pocket.getRejected() == null || pocket.getRejected().isEmpty(),
+        "a command answers refusals itself: the shadow's rejected isn't shown");
+    assertFalse(pocket.isPending(), "never, with commands");
+    assertEquals(Optional.of(POCKET_URL), s.reportedDestination("pocket"));
 
-    StreamDescription backpack = s.stream("backpack");
-    assertEquals(DesiredState.STOPPED, backpack.getDesired().getState());
+    StreamDescription backpack =
+        s.commanded("backpack", Map.of("bitrate_kbps", ShadowJson.NULL), Optional.empty());
+    assertEquals(DesiredState.STOPPED, backpack.getDesired().getState(), "the device's own");
     assertInstanceOf(BitrateSetting.ProfileDefaultMember.class, backpack.getDesired().getBitrate());
     assertEquals(camera("0bda:5830:CAM1", "0bda:5830:CAM1"), backpack.getReported().getSource());
     assertEquals(2, backpack.getReported().getActiveLinks());
     assertFalse(backpack.isPending());
 
-    StreamDescription pattern = s.stream("pattern");
+    StreamDescription pattern = s.commanded("pattern", Map.of(), Optional.empty());
     assertNull(pattern.getReported(), "no destination or bitrate reported");
     assertEquals(DesiredState.LIVE, pattern.getDesired().getState(), "the device's own");
     assertFalse(pattern.isPending());
     assertTrue(pattern.getRejected() == null || pattern.getRejected().isEmpty());
-  }
-
-  @Test
-  void pendingFollowsEachDesiredMember() {
-    StreamShadow s = shadow("stream-shadow-control.json");
-    assertTrue(s.streamWith("pocket", Map.of("destination", "srt://other:1")).isPending());
-    assertTrue(s.streamWith("pocket", Map.of("source", Map.of("type", "test"))).isPending());
-    assertTrue(s.streamWith("pocket", Map.of("bitrate_kbps", 2500)).isPending());
-    assertTrue(s.streamWith("pocket", Map.of("bitrate_kbps", ShadowJson.NULL)).isPending());
-    assertFalse(s.streamWith("pocket", Map.of("state", "live")).isPending());
-    assertTrue(s.streamWith("backpack", Map.of("profile", "hevc")).isPending());
-    assertTrue(s.streamWith("pattern", Map.of("destination", POCKET_URL)).isPending());
-    assertTrue(s.streamWith("nope", Map.of("state", "live")).isPending(), "nothing reported");
-    assertEquals(Optional.of(POCKET_URL), s.destination("pocket"));
-    assertEquals(
-        Optional.of("srtla://10.0.0.1:5000?streamid=publish/live/backpack"),
-        s.destination("backpack"));
-  }
-
-  @Test
-  void testPatternIgnoresTheDefaultsTheDeviceFillsIn() {
-    StreamShadow s =
-        new StreamShadow(
-            ShadowJson.parse(
-                """
-                {"state": {"reported": {"streams": {
-                  "bars": {"desired": "stopped",
-                           "source": {"type": "test", "size": "1280x720", "fps": 30}},
-                  "cam": {"desired": "stopped",
-                          "source": {"type": "camera", "video": "usb:1-1", "audio": "usb:1-2",
-                                     "product": "C920"}}}}}}
-                """
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-    assertFalse(s.streamWith("bars", Map.of("source", Map.of("type", "test"))).isPending());
-    assertFalse(
-        s.streamWith("bars", Map.of("source", Map.of("type", "test", "fps", 30))).isPending());
-    assertTrue(
-        s.streamWith("bars", Map.of("source", Map.of("type", "test", "fps", 25))).isPending());
-    assertTrue(
-        s.streamWith("bars", Map.of("source", Map.of("type", "test", "size", "640x360")))
-            .isPending());
-    assertTrue(
-        s.streamWith("bars", Map.of("source", Map.of("type", "camera", "video", "usb:1-1")))
-            .isPending());
-    Map<String, Object> both = Map.of("type", "camera", "video", "usb:1-1", "audio", "usb:1-2");
-    assertFalse(s.streamWith("cam", Map.of("source", both)).isPending(), "details don't count");
-    assertTrue(
-        s.streamWith("cam", Map.of("source", Map.of("type", "camera", "video", "usb:1-1")))
-            .isPending(),
-        "no audio is a different source");
-    assertTrue(s.streamWith("cam", Map.of("source", Map.of("type", "test"))).isPending());
   }
 
   @Test
