@@ -69,6 +69,9 @@ class WifiControlTest {
     final Deque<Optional<Execution>> states = new ArrayDeque<>();
     Optional<Execution> last = Optional.empty();
 
+    /** Runs as each command starts, so a test can check what had happened before it. */
+    Runnable onStart = () -> {};
+
     void answer(Execution... executions) {
       for (Execution execution : executions) {
         states.add(Optional.ofNullable(execution));
@@ -77,6 +80,7 @@ class WifiControlTest {
 
     @Override
     public String start(String thingName, String commandId, String args, int timeoutSeconds) {
+      onStart.run();
       started.add(new Started(thingName, commandId, args, timeoutSeconds));
       return "exec-" + started.size();
     }

@@ -17,8 +17,9 @@ import tv.kenley.helios.cloud.control.model.StreamNotFound;
  * Management: Tenets and Practices"), for devices whose Helios has them (0.16.0 and later). The
  * device applies a change whole or refuses it whole and answers within seconds, so the response
  * shows the stream as it is after the change. What was set is kept in the settings store, which
- * GetStream shows as {@code desired}; the stream's old desired state is cleared, so it can't undo a
- * command when the device reconnects.
+ * GetStream shows as {@code desired}. The stream's old desired state is cleared before the command
+ * is sent: left in place, AWS IoT sends it back as a delta when the device reports the change, and
+ * the device (which still reads desired state) undoes the command (found live, 2026-11-26).
  */
 final class StreamCommands {
   static final String START = "helios-stream-start-v1";
@@ -89,6 +90,7 @@ final class StreamCommands {
       String commandId,
       Map<String, Object> args,
       Map<String, Object> changes) {
+    final long version = clearDesired(device.getThingName(), shadow, streamId);
     Document result = outcome(runner.run(device.getThingName(), commandId, args), streamId);
     List<RefusedSetting> refused =
         ShadowJson.list(result, "refused").stream()
@@ -106,7 +108,6 @@ final class StreamCommands {
     Map<String, Object> record = recorded(device.getDeviceId(), streamId);
     record.putAll(changes);
     settings.put(device.getDeviceId(), SettingsStore.stream(streamId), record);
-    long version = clearDesired(device.getThingName(), shadow, streamId);
     return new Applied(shadow.commanded(streamId, record, Optional.of(status)), version);
   }
 
