@@ -241,7 +241,32 @@ class StreamCommandsTest {
         List.of("profile", "sourceCeilingPercent"),
         refused.getRefused().stream().map(r -> r.getSetting()).toList());
     assertTrue(settings.items.isEmpty(), "nothing recorded");
-    assertTrue(shadows.updates.isEmpty(), "desired state untouched");
+  }
+
+  @Test
+  void clearsTheOldDesiredStateBeforeTheCommand() {
+    // Left until after, AWS IoT sends it back as a delta when the device reports the change, and
+    // the device undoes the command (found live on the Pi 5, 2026-11-26).
+    String clear = "{\"state\":{\"desired\":{\"streams\":{\"pocket\":null}}}}";
+    commands.onStart =
+        () ->
+            assertTrue(
+                shadows.updates.stream().anyMatch(u -> u.endsWith(clear)),
+                "cleared before the command: " + shadows.updates);
+    commands.answer(succeeded(STATUS));
+    service.update(
+        UpdateStreamInput.builder()
+            .deviceId(ID)
+            .streamId("pocket")
+            .bitrate(BitrateSetting.builder().profileDefault(Unit.getInstance()).build())
+            .build());
+    assertEquals(1, shadows.updates.size(), "once");
+
+    // A stream without desired state: nothing to clear.
+    commands.onStart = () -> {};
+    commands.answer(succeeded(STATUS));
+    service.start(ID, "pattern", null);
+    assertEquals(1, shadows.updates.size());
   }
 
   @Test
