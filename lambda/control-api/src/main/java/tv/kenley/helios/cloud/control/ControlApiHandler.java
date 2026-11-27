@@ -63,14 +63,15 @@ public final class ControlApiHandler
     IotClient control = IotClient.builder().httpClient(UrlConnectionHttpClient.create()).build();
     DeviceDirectory devices = new DeviceDirectory(db, required(env, "DEVICES_TABLE"));
     IotShadows shadows = new IotShadows(iot);
-    return new ControlApi(
-        new ControlService(devices, shadows),
-        new WifiControl(
-            devices,
-            shadows,
+    SettingsStore settings = new DynamoSettings(db, required(env, "SETTINGS_TABLE"));
+    CommandRunner runner =
+        new CommandRunner(
             new IotCommands(jobs, control, required(env, "IOT_ARN_PREFIX")),
             Clock.systemUTC(),
-            duration -> Thread.sleep(duration)),
+            duration -> Thread.sleep(duration));
+    return new ControlApi(
+        new ControlService(devices, shadows, new StreamCommands(runner, shadows, settings)),
+        new WifiControl(devices, shadows, runner, settings),
         System.out::println,
         System.err::println,
         Clock.systemUTC());

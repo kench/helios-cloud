@@ -151,8 +151,15 @@ callers assume `helios-operator` (`grantControl`). Its handler is
 `tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest`, and
 `./gradlew :control-api:lambdaZip` builds `control-api/build/lambda/control-api.zip`. It reads the
 devices table (never writing it, and never reading PINs), reads the `gps`, `helios`, `net` and `stream` shadows,
-and changes streams by writing the `stream` shadow's desired state (HLD section 7.3.7 lists the
-fields); the device applies them and reports back. Changes answer 202 with the shadow version.
+and changes streams with commands (contract `device.smithy`: `helios-stream-start-v1`, `-stop-v1`,
+`-update-v1`) for a device whose Helios is 0.16.0 or later (`StreamCommands.java`): the device
+applies a change whole or refuses it whole (`StreamChangeRefused`, 409) within 10 s, or the call
+fails with `DeviceUnreachable` (504); nothing is queued. A destination goes to the device sealed to
+its key. What was set is kept in the `ControlSettings` table (`SettingsStore`, encrypted at rest;
+also Wi-Fi passphrases), which GetStream and ListWifiNetworks show to operators, and the stream's old
+desired state is cleared. An older device still gets the `stream` shadow's desired state (HLD
+section 7.3.7), which it applies when it can, with `pending` until it reports it. Changes answer
+202 (Notion: *Helios - State Management: Tenets and Practices*).
 Destinations are SRT or SRTLA URLs only, checked by `Destinations.java` and stored in a normal
 form. Each call writes an audit line with the caller's IAM ARN, and a destination change also
 records the new destination. `GetStreamStatus` (a command with a response) isn't routed yet.

@@ -45,6 +45,35 @@ final class Sealing {
   /** A sealed value as Helios takes it: the encapsulated key and ciphertext, base64url. */
   record Sealed(String enc, String ct) {}
 
+  /**
+   * The public key to seal to, from the device's {@code helios} shadow ({@code secrets_key}), if it
+   * reports one in this suite.
+   */
+  static java.util.Optional<String> deviceKey(Shadows shadows, String thing) {
+    java.util.Optional<software.amazon.smithy.java.core.serde.document.Document> key =
+        shadows
+            .get(thing, ControlService.HELIOS_SHADOW)
+            .map(ShadowJson::parse)
+            .flatMap(document -> ShadowJson.at(document, "state", "reported", "secrets_key"));
+    if (key.isEmpty() || !ShadowJson.string(key.get(), "suite").filter(SUITE::equals).isPresent()) {
+      return java.util.Optional.empty();
+    }
+    return ShadowJson.string(key.get(), "public");
+  }
+
+  /**
+   * {@code plaintext} sealed to {@code thing}'s key for {@code purpose} (the AAD), as a command's
+   * argument: {@code {"sealed": {"enc", "ct"}}}.
+   */
+  static java.util.Map<String, Object> sealedArg(
+      String key, String thing, String purpose, byte[] plaintext) {
+    Sealed sealed = seal(key, info(thing), purpose.getBytes(StandardCharsets.UTF_8), plaintext);
+    java.util.Map<String, Object> wire = new java.util.LinkedHashMap<>();
+    wire.put("enc", sealed.enc());
+    wire.put("ct", sealed.ct());
+    return java.util.Map.of("sealed", wire);
+  }
+
   /** {@code info} for a device: {@code helios secret v1 <thing>}. */
   static byte[] info(String thingName) {
     return ("helios secret v1 " + thingName).getBytes(StandardCharsets.UTF_8);

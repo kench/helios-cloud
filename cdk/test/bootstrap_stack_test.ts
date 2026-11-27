@@ -33,6 +33,22 @@ function tableKeyedBy(template: Template, key: string): string {
   return ids[0];
 }
 
+/** The logical ID of the control settings table: deviceId and item. */
+function controlSettingsTable(template: Template): string {
+  const ids = Object.keys(
+    template.findResources('AWS::DynamoDB::GlobalTable', {
+      Properties: {
+        KeySchema: [
+          {AttributeName: 'deviceId', KeyType: 'HASH'},
+          {AttributeName: 'item', KeyType: 'RANGE'},
+        ],
+      },
+    }),
+  );
+  expect(ids).toHaveLength(1);
+  return ids[0];
+}
+
 /** The statements of the policy on the function whose logical ID starts with `id`. */
 function statementsOf(template: Template, id: string): unknown {
   const policies = Object.values(
@@ -45,11 +61,15 @@ function statementsOf(template: Template, id: string): unknown {
 }
 
 describe('BootstrapStack', () => {
-  it('keeps device records and the MAC index if the stack is deleted', () => {
+  it('keeps device records, the MAC index and control settings if the stack is deleted', () => {
     const template = synthesize();
-    template.resourceCountIs('AWS::DynamoDB::GlobalTable', 3);
-    for (const key of ['deviceId', 'mac']) {
-      const table = template.toJSON()['Resources'][tableKeyedBy(template, key)];
+    template.resourceCountIs('AWS::DynamoDB::GlobalTable', 4);
+    for (const id of [
+      tableKeyedBy(template, 'deviceId'),
+      tableKeyedBy(template, 'mac'),
+      controlSettingsTable(template),
+    ]) {
+      const table = template.toJSON()['Resources'][id];
       expect(table['DeletionPolicy']).toBe('Retain');
       expect(table['UpdateReplacePolicy']).toBe('Retain');
     }
@@ -62,7 +82,7 @@ describe('BootstrapStack', () => {
     const tables = Object.values(
       synthesize().findResources('AWS::DynamoDB::GlobalTable'),
     );
-    expect(tables).toHaveLength(3);
+    expect(tables).toHaveLength(4);
     for (const table of tables) {
       expect(table['Properties']['BillingMode']).toBe('PAY_PER_REQUEST');
       for (const replica of table['Properties']['Replicas']) {
@@ -213,6 +233,7 @@ describe('BootstrapStack', () => {
       Environment: {
         Variables: {
           DEVICES_TABLE: {Ref: tableKeyedBy(template, 'deviceId')},
+          SETTINGS_TABLE: {Ref: controlSettingsTable(template)},
           IOT_DATA_ENDPOINT: IOT_ENDPOINTS.data,
         },
       },
@@ -240,6 +261,16 @@ describe('BootstrapStack', () => {
         Resource: {'Fn::GetAtt': [tableKeyedBy(template, 'deviceId'), 'Arn']},
       },
       {
+        Action: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+        ],
+        Effect: 'Allow',
+        Resource: {'Fn::GetAtt': [controlSettingsTable(template), 'Arn']},
+      },
+      {
         Action: 'iot:GetThingShadow',
         Effect: 'Allow',
         Resource: [
@@ -260,6 +291,9 @@ describe('BootstrapStack', () => {
         Resource: [
           `${command}/helios-net-wifi-set-v1`,
           `${command}/helios-net-wifi-remove-v1`,
+          `${command}/helios-stream-start-v1`,
+          `${command}/helios-stream-stop-v1`,
+          `${command}/helios-stream-update-v1`,
           `${thing}/*`,
         ],
       },
@@ -272,7 +306,17 @@ describe('BootstrapStack', () => {
     expect(commands.map(c => c['Properties']['CommandId']).sort()).toEqual([
       'helios-net-wifi-remove-v1',
       'helios-net-wifi-set-v1',
+      'helios-stream-start-v1',
+      'helios-stream-stop-v1',
+      'helios-stream-update-v1',
     ]);
+    const names: Record<string, [string, string]> = {
+      'helios-net-wifi-set-v1': ['net', 'wifi.set'],
+      'helios-net-wifi-remove-v1': ['net', 'wifi.remove'],
+      'helios-stream-start-v1': ['stream', 'start'],
+      'helios-stream-stop-v1': ['stream', 'stop'],
+      'helios-stream-update-v1': ['stream', 'update'],
+    };
     for (const command of commands) {
       const properties = command['Properties'];
       expect(properties['Namespace']).toBe('AWS-IoT');
@@ -287,12 +331,10 @@ describe('BootstrapStack', () => {
         },
       ]);
       const payload = JSON.parse(properties['PayloadTemplate']);
+      const [module, name] = names[properties['CommandId']];
       expect(payload).toEqual({
-        module: 'net',
-        name:
-          properties['CommandId'] === 'helios-net-wifi-set-v1'
-            ? 'wifi.set'
-            : 'wifi.remove',
+        module,
+        name,
         timeout_s: '${aws:iot:commandexecution::executionTimeoutSec}',
         args: '${aws:iot:commandexecution::parameter:args}',
       });
