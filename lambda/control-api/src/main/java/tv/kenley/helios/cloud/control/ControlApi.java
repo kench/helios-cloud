@@ -175,17 +175,13 @@ final class ControlApi {
               StartStreamInput input =
                   RestJson.decode(
                       body, StartStreamInput.builder(), b -> b.deviceId(device).streamId(stream));
-              yield RestJson.ok(
-                  202,
-                  service.start(input.getDeviceId(), input.getStreamId(), input.getClientToken()));
+              yield RestJson.ok(202, service.start(input.getDeviceId(), input.getStreamId()));
             }
             case "StopStream" -> {
               StopStreamInput input =
                   RestJson.decode(
                       body, StopStreamInput.builder(), b -> b.deviceId(device).streamId(stream));
-              yield RestJson.ok(
-                  202,
-                  service.stop(input.getDeviceId(), input.getStreamId(), input.getClientToken()));
+              yield RestJson.ok(202, service.stop(input.getDeviceId(), input.getStreamId()));
             }
             case "UpdateStream" -> {
               UpdateStreamInput input =

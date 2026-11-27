@@ -30,10 +30,10 @@ import tv.kenley.helios.cloud.control.model.UpdateStreamOutput;
 
 /**
  * The Control API's operations (HLD section 7.3): devices from the devices table, everything else
- * from the device's shadows. Stream changes are commands for a device whose Helios has them ({@link
- * StreamCommands}): applied before the response, and recorded for GetStream. For an older device
- * they're written as the {@code stream} shadow's desired state, which it applies when it can and
- * reports.
+ * from the device's shadows. Stream changes are commands ({@link StreamCommands}; the page "Helios
+ * - State Management: Tenets and Practices"): applied before the response, and recorded for
+ * GetStream's {@code desired}. Shadows are read, never written for a change. A device whose Helios
+ * predates the stream commands (before 0.16.0) answers that it can't take them.
  */
 final class ControlService {
   static final String STREAM_SHADOW = "stream";
@@ -46,21 +46,10 @@ final class ControlService {
   private final Shadows shadows;
   private final StreamCommands streams;
 
-  /** Every device on desired state. */
-  ControlService(DeviceDirectory devices, Shadows shadows) {
-    this(devices, shadows, null);
-  }
-
-  /** Devices that have the stream commands get them; {@code streams} {@code null}: none do. */
   ControlService(DeviceDirectory devices, Shadows shadows, StreamCommands streams) {
     this.devices = devices;
     this.shadows = shadows;
     this.streams = streams;
-  }
-
-  /** Whether {@code device}'s stream changes are commands. */
-  private boolean commands(DeviceSummary device) {
-    return streams != null && StreamCommands.supports(device);
   }
 
   ListDevicesOutput listDevices(String nextToken, Integer maxResults) {
@@ -145,8 +134,7 @@ final class ControlService {
         ListStreamsOutput.builder()
             .streams(
                 shadow.streamIds().stream()
-                    .map(id ->
-                        commands(device) ? streams.describe(device, shadow, id) : shadow.stream(id))
+                    .map(id -> streams.describe(device, shadow, id))
                     .toList());
     shadow.recordingStorage().ifPresent(output::recording);
     return output.build();
@@ -155,26 +143,20 @@ final class ControlService {
   GetStreamOutput getStream(String deviceId, String streamId) {
     StreamShadow shadow = existing(deviceId, streamId);
     DeviceSummary device = device(deviceId);
-    return GetStreamOutput.builder().stream(
-            commands(device) ? streams.describe(device, shadow, streamId) : shadow.stream(streamId))
-        .build();
+    return GetStreamOutput.builder().stream(streams.describe(device, shadow, streamId)).build();
   }
 
-  StartStreamOutput start(String deviceId, String streamId, String clientToken) {
+  StartStreamOutput start(String deviceId, String streamId) {
     Change change =
-        commands(device(deviceId))
-            ? command(deviceId, streamId, StreamCommands.START, Map.of(), Map.of("state", "live"))
-            : change(deviceId, streamId, Map.of("state", "live"), clientToken);
+        command(deviceId, streamId, StreamCommands.START, Map.of(), Map.of("state", "live"));
     return StartStreamOutput.builder().stream(change.stream())
         .shadowVersion(change.version())
         .build();
   }
 
-  StopStreamOutput stop(String deviceId, String streamId, String clientToken) {
+  StopStreamOutput stop(String deviceId, String streamId) {
     Change change =
-        commands(device(deviceId))
-            ? command(deviceId, streamId, StreamCommands.STOP, Map.of(), Map.of("state", "stopped"))
-            : change(deviceId, streamId, Map.of("state", "stopped"), clientToken);
+        command(deviceId, streamId, StreamCommands.STOP, Map.of(), Map.of("state", "stopped"));
     return StopStreamOutput.builder().stream(change.stream())
         .shadowVersion(change.version())
         .build();
@@ -188,7 +170,7 @@ final class ControlService {
    */
   UpdateStreamOutput update(UpdateStreamInput input) {
     StreamShadow shadow = existing(input.getDeviceId(), input.getStreamId());
-    Map<String, Object> desired = new LinkedHashMap<>();
+    Map<String, Object> record = new LinkedHashMap<>();
     if (input.getSource() != null) {
       if (!shadow.offers(input.getSource())) {
         throw SettingUnavailable.builder()
@@ -196,7 +178,7 @@ final class ControlService {
             .message("The device doesn't report this source among its inputs.")
             .build();
       }
-      desired.put("source", StreamShadow.sourceUpdate(input.getSource()));
+      record.put("source", StreamShadow.sourceFields(input.getSource()));
     }
     if (input.getProfile() != null) {
       if (!shadow.hasProfile(input.getProfile())) {
@@ -205,38 +187,35 @@ final class ControlService {
             .message("The device has no profile " + input.getProfile() + ".")
             .build();
       }
-      desired.put("profile", input.getProfile());
+      record.put("profile", input.getProfile());
     }
     if (input.getBitrate() != null) {
-      desired.put(
+      record.put(
           "bitrate_kbps",
           input.getBitrate() instanceof BitrateSetting.OverrideKbpsMember(int kbps)
               ? (Object) kbps
               : ShadowJson.NULL);
     }
     if (input.getSourceCeilingPercent() != null) {
-      desired.put("source_ceiling_percent", input.getSourceCeilingPercent());
+      record.put("source_ceiling_percent", input.getSourceCeilingPercent());
     }
     if (input.isRecord() != null) {
-      desired.put("record", input.isRecord());
+      record.put("record", input.isRecord());
     }
     Change change =
-        commands(device(input.getDeviceId()))
-            ? command(
-                input.getDeviceId(),
-                input.getStreamId(),
-                StreamCommands.UPDATE,
-                updateArgs(input),
-                recordOf(input, desired))
-            : write(
-                input.getDeviceId(), shadow, input.getStreamId(), desired, input.getClientToken());
+        command(
+            input.getDeviceId(),
+            input.getStreamId(),
+            StreamCommands.UPDATE,
+            updateArgs(input),
+            record);
     return UpdateStreamOutput.builder().stream(change.stream())
         .shadowVersion(change.version())
         .build();
   }
 
   /**
-   * Checks the URL and writes it in its normal form.
+   * Checks the URL and sets it, in its normal form and sealed to the device's key.
    *
    * @throws tv.kenley.helios.cloud.control.model.InvalidDestination if it isn't an SRT or SRTLA URL
    *     within the contract's rules
@@ -245,50 +224,37 @@ final class ControlService {
     String url = Destinations.parse(input.getUrl()).url();
     StreamShadow shadow = existing(input.getDeviceId(), input.getStreamId());
     DeviceSummary device = device(input.getDeviceId());
-    Change change;
-    Optional<String> previous;
-    if (commands(device)) {
-      previous =
-          Optional.ofNullable(
-                  streams.recorded(device.getDeviceId(), input.getStreamId()).get("destination"))
-              .filter(String.class::isInstance)
-              .map(String.class::cast)
-              .or(() -> shadow.reportedDestination(input.getStreamId()));
-      String key =
-          Sealing.deviceKey(shadows, device.getThingName())
-              .orElseThrow(() ->
-                  StreamChangeRefused.builder()
-                      .message("The device doesn't report a key to seal the destination to.")
-                      .refused(
-                          java.util.List.of(
-                              RefusedSetting.builder()
-                                  .setting("destination")
-                                  .reason("no key to seal it to")
-                                  .build()))
-                      .build());
-      Map<String, Object> sealed =
-          Sealing.sealedArg(
-              key,
-              device.getThingName(),
-              "stream.destination " + input.getStreamId(),
-              url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      change =
-          command(
-              input.getDeviceId(),
-              input.getStreamId(),
-              StreamCommands.UPDATE,
-              Map.of("destination", Map.of("set", sealed)),
-              Map.of("destination", url));
-    } else {
-      previous = shadow.destination(input.getStreamId());
-      change =
-          write(
-              input.getDeviceId(),
-              shadow,
-              input.getStreamId(),
-              Map.of("destination", url),
-              input.getClientToken());
-    }
+    final Optional<String> previous =
+        Optional.ofNullable(
+                streams.recorded(device.getDeviceId(), input.getStreamId()).get("destination"))
+            .filter(String.class::isInstance)
+            .map(String.class::cast)
+            .or(() -> shadow.reportedDestination(input.getStreamId()));
+    String key =
+        Sealing.deviceKey(shadows, device.getThingName())
+            .orElseThrow(() ->
+                StreamChangeRefused.builder()
+                    .message("The device doesn't report a key to seal the destination to.")
+                    .refused(
+                        java.util.List.of(
+                            RefusedSetting.builder()
+                                .setting("destination")
+                                .reason("no key to seal it to")
+                                .build()))
+                    .build());
+    Map<String, Object> sealed =
+        Sealing.sealedArg(
+            key,
+            device.getThingName(),
+            "stream.destination " + input.getStreamId(),
+            url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    Change change =
+        command(
+            input.getDeviceId(),
+            input.getStreamId(),
+            StreamCommands.UPDATE,
+            Map.of("destination", Map.of("set", sealed)),
+            Map.of("destination", url));
     SetStreamDestinationOutput.Builder output =
         SetStreamDestinationOutput.builder().stream(change.stream())
             .shadowVersion(change.version());
@@ -339,39 +305,6 @@ final class ControlService {
       args.put("record", Map.of("set", input.isRecord()));
     }
     return args;
-  }
-
-  /** What an update sets, as the settings store keeps it (shadow form, its source whole). */
-  private static Map<String, Object> recordOf(
-      UpdateStreamInput input, Map<String, Object> desired) {
-    Map<String, Object> record = new LinkedHashMap<>(desired);
-    if (input.getSource() != null) {
-      record.put("source", StreamShadow.sourceFields(input.getSource()));
-    }
-    return record;
-  }
-
-  private Change change(
-      String deviceId, String streamId, Map<String, Object> desired, String clientToken) {
-    return write(deviceId, existing(deviceId, streamId), streamId, desired, clientToken);
-  }
-
-  private Change write(
-      String deviceId,
-      StreamShadow shadow,
-      String streamId,
-      Map<String, Object> desired,
-      String clientToken) {
-    Map<String, Object> document = new LinkedHashMap<>();
-    document.put(
-        "state",
-        Map.of("desired", Map.of("streams", Map.of(streamId, new LinkedHashMap<>(desired)))));
-    if (clientToken != null) {
-      document.put("clientToken", clientToken);
-    }
-    long version =
-        shadows.update(device(deviceId).getThingName(), STREAM_SHADOW, ShadowJson.bytes(document));
-    return new Change(shadow.streamWith(streamId, desired), version);
   }
 
   private DeviceSummary device(String deviceId) {

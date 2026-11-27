@@ -14,20 +14,20 @@ import tv.kenley.helios.cloud.control.model.StreamNotFound;
 
 /**
  * Stream changes as commands (helios-contract {@code device.smithy}; the page "Helios - State
- * Management: Tenets and Practices"), for devices whose Helios has them (0.16.0 and later). The
- * device applies a change whole or refuses it whole and answers within seconds, so the response
- * shows the stream as it is after the change. What was set is kept in the settings store, which
- * GetStream shows as {@code desired}. The stream's old desired state is cleared before the command
- * is sent: left in place, AWS IoT sends it back as a delta when the device reports the change, and
- * the device (which still reads desired state) undoes the command (found live, 2026-11-26).
+ * Management: Tenets and Practices"), the only way the Control API changes a stream. The device
+ * applies a change whole or refuses it whole and answers within seconds, so the response shows the
+ * stream as it is after the change. What was set is kept in the settings store, which GetStream
+ * shows as {@code desired}. A Helios before 0.16.0 takes start and stop but not update, which it
+ * answers as an unknown command.
+ *
+ * <p>The stream's old desired state is cleared before the command is sent: left in place, AWS IoT
+ * sends it back as a delta when the device reports the change, and Helios 0.16.0 (which still reads
+ * desired state) undoes the command (found live, 2026-11-26).
  */
 final class StreamCommands {
   static final String START = "helios-stream-start-v1";
   static final String STOP = "helios-stream-stop-v1";
   static final String UPDATE = "helios-stream-update-v1";
-
-  /** The first Helios with the stream commands. */
-  private static final int[] FIRST = {0, 16, 0};
 
   private final CommandRunner runner;
   private final Shadows shadows;
@@ -37,27 +37,6 @@ final class StreamCommands {
     this.runner = runner;
     this.shadows = shadows;
     this.settings = settings;
-  }
-
-  /** Whether {@code device} takes stream changes as commands: its Helios is 0.16.0 or later. */
-  static boolean supports(DeviceSummary device) {
-    String version = device.getHeliosVersion();
-    if (version == null) {
-      return false;
-    }
-    String[] parts = version.split("[.+-]");
-    for (int i = 0; i < FIRST.length; i++) {
-      int part;
-      try {
-        part = i < parts.length ? Integer.parseInt(parts[i]) : 0;
-      } catch (NumberFormatException e) {
-        return false;
-      }
-      if (part != FIRST[i]) {
-        return part > FIRST[i];
-      }
-    }
-    return true;
   }
 
   /** A change's result: the stream after it, and the {@code stream} shadow's version. */
@@ -111,7 +90,11 @@ final class StreamCommands {
     return new Applied(shadow.commanded(streamId, record, Optional.of(status)), version);
   }
 
-  /** Removes the stream's desired state, if it has any; the shadow's version after. */
+  /**
+   * Removes the stream's desired state, if it has any; the shadow's version after. Only Helios
+   * 0.16.0 needs it: from 0.17.0 Helios reads no stream desired state and clears what's left
+   * itself, so this can go once every device runs 0.17.0 or later.
+   */
   private long clearDesired(String thing, StreamShadow shadow, String streamId) {
     if (!shadow.hasDesired(streamId)) {
       return shadow.version();
@@ -132,7 +115,15 @@ final class StreamCommands {
     if ("INVALID_MESSAGE".equals(code) && description.startsWith("no stream")) {
       throw StreamNotFound.builder().message("The device has no stream " + streamId + ".").build();
     }
-    if ("MODULE_UNAVAILABLE".equals(code) || "UNKNOWN_COMMAND".equals(code)) {
+    if ("UNKNOWN_COMMAND".equals(code)) {
+      throw DeviceStateUnavailable.builder()
+          .message(
+              "The device's Helios doesn't have this stream command (stream changes need Helios"
+                  + " 0.16.0 or later): "
+                  + description)
+          .build();
+    }
+    if ("MODULE_UNAVAILABLE".equals(code)) {
       throw DeviceStateUnavailable.builder()
           .message("The device couldn't take the change (" + code + "): " + description)
           .build();

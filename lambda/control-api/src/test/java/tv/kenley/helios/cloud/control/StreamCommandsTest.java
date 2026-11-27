@@ -75,7 +75,8 @@ class StreamCommandsTest {
     }
   }
 
-  private static final String STATUS =
+  /** A stream.update answer: the stream's status after it. */
+  static final String STATUS =
       """
       {"status": {"state": "stopped", "since": "2026-11-26T22:00:00Z", "desired": "stopped",
         "source": {"type": "rtmp", "camera": 1}, "profile": "cam", "bitrate_kbps": 2500,
@@ -97,15 +98,16 @@ class StreamCommandsTest {
     settings = new MemorySettings();
     devices = mock(DeviceDirectory.class);
     device("0.16.0");
-    WifiControlTest.Moving clock = new WifiControlTest.Moving();
-    CommandRunner runner =
-        new CommandRunner(commands, clock, duration -> clock.now = clock.now.plus(duration));
-    service = new ControlService(devices, shadows, new StreamCommands(runner, shadows, settings));
+    service = ControlServiceTest.service(devices, shadows, commands, settings);
     shadows.documents.put(
         THING + "/stream", StreamShadowTest.fixture("stream-shadow-control.json"));
+    key = keyPair();
+  }
+
+  static KeyPair keyPair() throws GeneralSecurityException {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
     generator.initialize(new ECGenParameterSpec("secp256r1"));
-    key = generator.generateKeyPair();
+    return generator.generateKeyPair();
   }
 
   private void device(String version) {
@@ -121,36 +123,12 @@ class StreamCommandsTest {
     when(devices.get(ID)).thenReturn(Optional.of(device.build()));
   }
 
-  private static Commands.Execution succeeded(String result) {
+  static Commands.Execution succeeded(String result) {
     return new Commands.Execution("SUCCEEDED", null, null, result);
   }
 
   private static Commands.Execution failed(String code, String description) {
     return new Commands.Execution("FAILED", code, description, null);
-  }
-
-  @Test
-  void devicesWithHelios016OrLaterTakeCommands() {
-    for (String version : List.of("0.16.0", "0.16.1", "0.17.0", "1.0.0", "0.16.0-1")) {
-      assertTrue(StreamCommands.supports(summary(version)), version);
-    }
-    for (String version : List.of("0.15.0", "0.9.9", "0.15.99", "x.y")) {
-      assertFalse(StreamCommands.supports(summary(version)), version);
-    }
-    assertFalse(StreamCommands.supports(summary(null)));
-  }
-
-  private static DeviceSummary summary(String version) {
-    DeviceSummary.Builder device =
-        DeviceSummary.builder()
-            .deviceId(ID)
-            .thingName(THING)
-            .role(DeviceRole.TRANSCODER)
-            .status(DeviceStatus.ACTIVE);
-    if (version != null) {
-      device.heliosVersion(version);
-    }
-    return device.build();
   }
 
   @Test
@@ -265,14 +243,14 @@ class StreamCommandsTest {
     // A stream without desired state: nothing to clear.
     commands.onStart = () -> {};
     commands.answer(succeeded(STATUS));
-    service.start(ID, "pattern", null);
+    service.start(ID, "pattern");
     assertEquals(1, shadows.updates.size());
   }
 
   @Test
   void startsAndStopsWithCommands() {
     commands.answer(succeeded(STATUS));
-    StreamDescription stream = service.start(ID, "backpack", "token-1").getStream();
+    StreamDescription stream = service.start(ID, "backpack").getStream();
     assertEquals(StreamCommands.START, commands.started.getLast().command());
     assertEquals(
         ShadowJson.parse("{\"stream_id\": \"backpack\"}".getBytes(StandardCharsets.UTF_8)),
@@ -288,7 +266,7 @@ class StreamCommandsTest {
              "source": {"type": "test"}, "profile": "hevc", "bitrate_kbps": 1000,
              "destination": "srt://ingest.example.com:4001?streamid=x"}
             """));
-    stream = service.stop(ID, "backpack", "token-2").getStream();
+    stream = service.stop(ID, "backpack").getStream();
     assertEquals(StreamCommands.STOP, commands.started.getLast().command());
     assertEquals("stopped", stream.getDesired().getState().getValue());
     assertEquals("hevc", stream.getReported().getProfile());
@@ -328,19 +306,19 @@ class StreamCommandsTest {
         output.getPrevious(),
         "nothing set through this API yet: the reported one");
 
-    // The next change shows this one as the previous.
+    // The next change shows this one as the previous, and is kept in its normal form.
     commands.answer(succeeded(STATUS));
-    String next = "srt://other.example.com:4000?streamid=x";
+    var next =
+        service.setDestination(
+            SetStreamDestinationInput.builder()
+                .deviceId(ID)
+                .streamId("pocket")
+                .url("srt://other.example.com:4000?latency=1500&streamid=x")
+                .build());
+    assertEquals(url, next.getPrevious());
     assertEquals(
-        url,
-        service
-            .setDestination(
-                SetStreamDestinationInput.builder()
-                    .deviceId(ID)
-                    .streamId("pocket")
-                    .url(next)
-                    .build())
-            .getPrevious());
+        "srt://other.example.com:4000?streamid=x&latency=1500",
+        next.getStream().getDesired().getDestination());
   }
 
   @Test
@@ -360,26 +338,36 @@ class StreamCommandsTest {
   @Test
   void failuresMapToTheApisErrors() {
     commands.answer(failed("INVALID_MESSAGE", "no stream \"pocket\""));
-    assertThrows(StreamNotFound.class, () -> service.start(ID, "pocket", null));
+    assertThrows(StreamNotFound.class, () -> service.start(ID, "pocket"));
     commands.answer(failed("MODULE_UNAVAILABLE", "the stream daemon is unreachable"));
-    assertThrows(DeviceStateUnavailable.class, () -> service.start(ID, "pocket", null));
+    assertThrows(DeviceStateUnavailable.class, () -> service.start(ID, "pocket"));
     commands.answer(failed("TIMEOUT", "late"));
-    assertThrows(DeviceUnreachable.class, () -> service.start(ID, "pocket", null));
+    assertThrows(DeviceUnreachable.class, () -> service.start(ID, "pocket"));
     commands.answer(failed("INTERNAL", "oops"));
-    assertThrows(IllegalStateException.class, () -> service.start(ID, "pocket", null));
+    assertThrows(IllegalStateException.class, () -> service.start(ID, "pocket"));
     // No answer at all.
     commands.answer(new Commands.Execution("IN_PROGRESS", null, null, null));
-    assertThrows(DeviceUnreachable.class, () -> service.start(ID, "pocket", null));
+    assertThrows(DeviceUnreachable.class, () -> service.start(ID, "pocket"));
     assertTrue(settings.items.isEmpty());
   }
 
   @Test
-  void olderDevicesStayOnDesiredState() {
+  void anOlderHeliosSaysItCantTakeTheChange() {
+    // Every device gets commands; a Helios before 0.16.0 doesn't know stream.update.
     device("0.15.0");
-    StreamDescription stream = service.start(ID, "backpack", "token").getStream();
-    assertTrue(commands.started.isEmpty());
-    assertTrue(shadows.updates.getLast().contains("\"backpack\":{\"state\":\"live\"}"));
-    assertEquals("live", stream.getDesired().getState().getValue());
+    commands.answer(failed("UNKNOWN_COMMAND", "unknown stream command update"));
+    DeviceStateUnavailable old =
+        assertThrows(
+            DeviceStateUnavailable.class,
+            () ->
+                service.update(
+                    UpdateStreamInput.builder()
+                        .deviceId(ID)
+                        .streamId("pocket")
+                        .profile("cam")
+                        .build()));
+    assertTrue(old.getMessage().contains("Helios 0.16.0 or later"), old.getMessage());
+    assertTrue(settings.items.isEmpty());
   }
 
   @Test
@@ -397,7 +385,12 @@ class StreamCommandsTest {
   }
 
   private void reportKey() {
-    String public64 = Base64.getUrlEncoder().withoutPadding().encodeToString(point());
+    reportKey(shadows, key);
+  }
+
+  /** The device's {@code helios} shadow reports {@code key}'s public half as its secrets key. */
+  static void reportKey(ControlServiceTest.FakeShadows shadows, KeyPair key) {
+    String public64 = Base64.getUrlEncoder().withoutPadding().encodeToString(point(key));
     shadows.documents.put(
         THING + "/helios",
         ("{\"state\":{\"reported\":{\"secrets_key\":{\"suite\":\""
@@ -409,6 +402,10 @@ class StreamCommandsTest {
   }
 
   private byte[] point() {
+    return point(key);
+  }
+
+  static byte[] point(KeyPair key) {
     ECPublicKey ec = (ECPublicKey) key.getPublic();
     byte[] out = new byte[65];
     out[0] = 0x04;

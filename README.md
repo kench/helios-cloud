@@ -152,14 +152,16 @@ callers assume `helios-operator` (`grantControl`). Its handler is
 `./gradlew :control-api:lambdaZip` builds `control-api/build/lambda/control-api.zip`. It reads the
 devices table (never writing it, and never reading PINs), reads the `gps`, `helios`, `net` and `stream` shadows,
 and changes streams with commands (contract `device.smithy`: `helios-stream-start-v1`, `-stop-v1`,
-`-update-v1`) for a device whose Helios is 0.16.0 or later (`StreamCommands.java`): the device
+`-update-v1`; `StreamCommands.java`), the only way it changes a stream: the device
 applies a change whole or refuses it whole (`StreamChangeRefused`, 409) within 10 s, or the call
 fails with `DeviceUnreachable` (504); nothing is queued. A destination goes to the device sealed to
 its key. What was set is kept in the `ControlSettings` table (`SettingsStore`, encrypted at rest;
-also Wi-Fi passphrases), which GetStream and ListWifiNetworks show to operators, and the stream's old
-desired state is cleared. An older device still gets the `stream` shadow's desired state (HLD
-section 7.3.7), which it applies when it can, with `pending` until it reports it. Changes answer
-202 (Notion: *Helios - State Management: Tenets and Practices*).
+also Wi-Fi passphrases), which GetStream and ListWifiNetworks show to operators. The `stream`
+shadow is only read: before each command the stream's old desired state is cleared, for Helios
+0.16.0, which still reads it (from 0.17.0 the device clears it itself). A Helios before 0.16.0
+answers an update with `DeviceStateUnavailable`. `pending` is always false and `rejected` is never
+set (the contract deprecates `pending`). Changes answer 202 (Notion: *Helios - State Management:
+Tenets and Practices*).
 Destinations are SRT or SRTLA URLs only, checked by `Destinations.java` and stored in a normal
 form. Each call writes an audit line with the caller's IAM ARN, and a destination change also
 records the new destination. `GetStreamStatus` (a command with a response) isn't routed yet.

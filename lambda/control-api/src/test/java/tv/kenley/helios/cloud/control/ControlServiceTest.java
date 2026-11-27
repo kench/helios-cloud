@@ -16,9 +16,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import software.amazon.smithy.java.core.schema.Unit;
-import tv.kenley.helios.cloud.control.model.BitrateSetting;
-import tv.kenley.helios.cloud.control.model.DesiredState;
 import tv.kenley.helios.cloud.control.model.DeviceNotFound;
 import tv.kenley.helios.cloud.control.model.DeviceRole;
 import tv.kenley.helios.cloud.control.model.DeviceStateUnavailable;
@@ -31,7 +28,6 @@ import tv.kenley.helios.cloud.control.model.SetStreamDestinationInput;
 import tv.kenley.helios.cloud.control.model.SettingUnavailable;
 import tv.kenley.helios.cloud.control.model.Source;
 import tv.kenley.helios.cloud.control.model.StreamNotFound;
-import tv.kenley.helios.cloud.control.model.TestSource;
 import tv.kenley.helios.cloud.control.model.UpdateStreamInput;
 
 class ControlServiceTest {
@@ -56,8 +52,21 @@ class ControlServiceTest {
     }
   }
 
+  /** The service, with stream commands answered by {@code commands} and a moving clock. */
+  static ControlService service(
+      DeviceDirectory devices,
+      Shadows shadows,
+      WifiControlTest.FakeCommands commands,
+      SettingsStore settings) {
+    WifiControlTest.Moving clock = new WifiControlTest.Moving();
+    CommandRunner runner =
+        new CommandRunner(commands, clock, duration -> clock.now = clock.now.plus(duration));
+    return new ControlService(devices, shadows, new StreamCommands(runner, shadows, settings));
+  }
+
   private FakeShadows shadows;
   private DeviceDirectory devices;
+  private WifiControlTest.FakeCommands commands;
   private ControlService service;
 
   @BeforeEach
@@ -73,7 +82,8 @@ class ControlServiceTest {
             .build();
     when(devices.get(ID)).thenReturn(Optional.of(device));
     when(devices.get("d-01M80KB9C9T0ZSPC64NZVY0000")).thenReturn(Optional.empty());
-    service = new ControlService(devices, shadows);
+    commands = new WifiControlTest.FakeCommands();
+    service = service(devices, shadows, commands, new StreamCommandsTest.MemorySettings());
   }
 
   private void streamShadow(String fixture) {
@@ -120,63 +130,6 @@ class ControlServiceTest {
   }
 
   @Test
-  void startsAndStopsThroughTheDesiredState() {
-    streamShadow("stream-shadow-current.json");
-    var started = service.start(ID, "pocket", "tok-1");
-    assertEquals(43, started.getShadowVersion());
-    assertEquals(DesiredState.LIVE, started.getStream().getDesired().getState());
-    var stopped = service.stop(ID, "pocket", null);
-    assertEquals(DesiredState.STOPPED, stopped.getStream().getDesired().getState());
-    assertTrue(stopped.getStream().isPending());
-    assertEquals(
-        List.of(
-            THING
-                + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":"
-                + "{\"state\":\"live\"}}}},\"clientToken\":\"tok-1\"}",
-            THING
-                + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":"
-                + "{\"state\":\"stopped\"}}}}}"),
-        shadows.updates);
-    assertThrows(StreamNotFound.class, () -> service.start(ID, "nope", null));
-  }
-
-  @Test
-  void updatesOnlyWhatsGiven() {
-    streamShadow("stream-shadow-control.json");
-    UpdateStreamInput input =
-        UpdateStreamInput.builder()
-            .deviceId(ID)
-            .streamId("pocket")
-            .source(Source.builder().rtmp(RtmpSource.builder().key("ingest").build()).build())
-            .profile("cam")
-            .bitrate(BitrateSetting.builder().overrideKbps(2500).build())
-            .sourceCeilingPercent(60)
-            .build();
-    var updated = service.update(input);
-    assertEquals("cam", updated.getStream().getDesired().getProfile());
-    assertEquals(
-        THING
-            + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":{"
-            + "\"source\":{\"type\":\"rtmp\",\"video\":null,\"audio\":null,\"camera\":null,"
-            + "\"size\":null,\"fps\":null},\"profile\":\"cam\",\"bitrate_kbps\":2500,"
-            + "\"source_ceiling_percent\":60}}}}}",
-        shadows.updates.getLast());
-
-    service.update(
-        UpdateStreamInput.builder()
-            .deviceId(ID)
-            .streamId("backpack")
-            .bitrate(BitrateSetting.builder().profileDefault(Unit.getInstance()).build())
-            .clientToken("tok-2")
-            .build());
-    assertEquals(
-        THING
-            + "/stream {\"state\":{\"desired\":{\"streams\":{\"backpack\":"
-            + "{\"bitrate_kbps\":null}}}},\"clientToken\":\"tok-2\"}",
-        shadows.updates.getLast());
-  }
-
-  @Test
   void switchesRecordingAndReportsIt() {
     streamShadow("stream-shadow-recording.json");
     var listed = service.listStreams(ID);
@@ -195,52 +148,23 @@ class ControlServiceTest {
     assertEquals("pocket/20261126T101500Z-*.ts", recording.getFiles());
     assertEquals("20261126T101500Z-00003.ts", recording.getSegment());
     assertEquals(Instant.parse("2026-11-26T10:15:00Z"), recording.getSince());
-    assertEquals(false, pocket.getDesired().isRecord());
-    assertTrue(pocket.isPending(), "desired off, still recording");
+    assertNull(pocket.getDesired().isRecord(), "the shadow's desired state isn't shown");
+    assertEquals(false, pocket.isPending());
 
-    // backpack: desired on, reported idle (set to record, not running): caught up.
     var backpack = service.getStream(ID, "backpack").getStream();
-    assertEquals(true, backpack.getDesired().isRecord());
     assertEquals(RecordingState.IDLE, backpack.getReported().getRecording().getState());
-    assertEquals(false, backpack.isPending());
     // A state this contract doesn't know is left out.
     assertNull(service.getStream(ID, "pattern").getStream().getReported().getRecording());
 
-    service.update(
-        UpdateStreamInput.builder().deviceId(ID).streamId("pattern").record(true).build());
-    assertEquals(
-        THING + "/stream {\"state\":{\"desired\":{\"streams\":{\"pattern\":{\"record\":true}}}}}",
-        shadows.updates.getLast());
-    // Reported without a recording (an older device): never caught up.
+    // Switched with stream.update, and shown as what was set.
+    commands.answer(StreamCommandsTest.succeeded(StreamCommandsTest.STATUS));
+    var pattern =
+        service.update(
+            UpdateStreamInput.builder().deviceId(ID).streamId("pattern").record(true).build());
+    assertEquals(true, pattern.getStream().getDesired().isRecord());
+    // Reported without a recording (an older device).
     streamShadow("stream-shadow-control.json");
     assertNull(service.listStreams(ID).getRecording());
-  }
-
-  @Test
-  void clearsThePreviousSourcesFields() {
-    // pocket's desired source is rtmp camera 1: a switch to a test pattern must clear `camera`, or
-    // the shadow's merge leaves it there and the device refuses the merged source.
-    streamShadow("stream-shadow-control.json");
-    var updated =
-        service.update(
-            UpdateStreamInput.builder()
-                .deviceId(ID)
-                .streamId("pocket")
-                .source(
-                    Source.builder()
-                        .test(TestSource.builder().size("1280x720").fps(30).build())
-                        .build())
-                .build());
-    assertEquals(
-        THING
-            + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":{\"source\":"
-            + "{\"type\":\"test\",\"size\":\"1280x720\",\"fps\":30,\"video\":null,"
-            + "\"audio\":null,\"camera\":null}}}}}}",
-        shadows.updates.getLast());
-    assertEquals(
-        Source.builder().test(TestSource.builder().size("1280x720").fps(30).build()).build(),
-        updated.getStream().getDesired().getSource(),
-        "the answer shows the source as the shadow will hold it, without the nulls");
   }
 
   @Test
@@ -272,42 +196,12 @@ class ControlServiceTest {
                         .build()));
     assertEquals("profile", profile.getSetting());
     assertTrue(shadows.updates.isEmpty(), "nothing written");
+    assertTrue(commands.started.isEmpty(), "no command sent");
   }
 
   @Test
-  void setsDestinationInItsNormalForm() {
+  void refusesAnInvalidDestinationBeforeAnyCommand() {
     streamShadow("stream-shadow-control.json");
-    var output =
-        service.setDestination(
-            SetStreamDestinationInput.builder()
-                .deviceId(ID)
-                .streamId("pocket")
-                .url("srt://other.example.com:4001?latency=1500&streamid=publish/live/p")
-                .build());
-    assertEquals(StreamShadowTest.POCKET_URL, output.getPrevious());
-    assertEquals(
-        "srt://other.example.com:4001?streamid=publish/live/p&latency=1500",
-        output.getStream().getDesired().getDestination());
-    assertTrue(output.getStream().isPending());
-    assertEquals(
-        THING
-            + "/stream {\"state\":{\"desired\":{\"streams\":{\"pocket\":{\"destination\":"
-            + "\"srt://other.example.com:4001?streamid=publish/live/p&latency=1500\"}}}}}",
-        shadows.updates.getLast());
-
-    streamShadow("stream-shadow-current.json");
-    assertNull(
-        service
-            .setDestination(
-                SetStreamDestinationInput.builder()
-                    .deviceId(ID)
-                    .streamId("pocket")
-                    .url("srtla://10.0.0.1:5000")
-                    .build())
-            .getPrevious(),
-        "nothing desired or reported before");
-
-    int writes = shadows.updates.size();
     assertThrows(
         InvalidDestination.class,
         () ->
@@ -317,6 +211,7 @@ class ControlServiceTest {
                     .streamId("pocket")
                     .url("srt://host:1?mode=listener")
                     .build()));
-    assertEquals(writes, shadows.updates.size(), "an invalid destination writes nothing");
+    assertTrue(shadows.updates.isEmpty());
+    assertTrue(commands.started.isEmpty());
   }
 }
