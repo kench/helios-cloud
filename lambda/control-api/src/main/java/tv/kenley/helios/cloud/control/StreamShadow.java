@@ -62,6 +62,11 @@ record StreamShadow(Document document) {
         new TreeSet<>(ShadowJson.map(document, "state", "reported", "streams").keySet()));
   }
 
+  /** Whether the shadow holds desired state for stream {@code id}. */
+  boolean hasDesired(String id) {
+    return ShadowJson.at(document, "state", "desired", "streams", id).isPresent();
+  }
+
   /** Whether the device reports a stream {@code id}. */
   boolean hasStream(String id) {
     return ShadowJson.at(document, "state", "reported", "streams", id).isPresent();
@@ -94,6 +99,11 @@ record StreamShadow(Document document) {
     return kept;
   }
 
+  /** The destination the device reports for stream {@code id}. */
+  Optional<String> reportedDestination(String id) {
+    return reportedStream(id).flatMap(r -> ShadowJson.string(r, "destination"));
+  }
+
   /** The desired destination, if set, else the reported one. */
   Optional<String> destination(String id) {
     return ShadowJson.string(document, "state", "desired", "streams", id, "destination")
@@ -106,11 +116,19 @@ record StreamShadow(Document document) {
    * The desired members for stream {@code id}, in shadow form ({@code null}s as ShadowJson.NULL).
    */
   private Map<String, Object> desiredOf(String id) {
+    return ShadowJson.at(document, "state", "desired", "streams", id)
+        .map(StreamShadow::settingsOf)
+        .orElseGet(LinkedHashMap::new);
+  }
+
+  /**
+   * Settings in shadow form ({@code null}s as ShadowJson.NULL) from a desired-state block or the
+   * settings store's record of a stream: state, bitrate_kbps, source, profile, destination,
+   * source_ceiling_percent, record.
+   */
+  static Map<String, Object> settingsOf(Document block) {
     Map<String, Object> desired = new LinkedHashMap<>();
-    Optional<Document> doc = ShadowJson.at(document, "state", "desired", "streams", id);
-    if (doc.isEmpty()) {
-      return desired;
-    }
+    Optional<Document> doc = Optional.of(block);
     ShadowJson.string(doc.get(), "state").ifPresent(v -> desired.put("state", v));
     if (ShadowJson.has(doc.get(), "bitrate_kbps")) {
       desired.put(
@@ -130,8 +148,23 @@ record StreamShadow(Document document) {
     return desired;
   }
 
+  /**
+   * Stream {@code id} on a device that takes stream commands: {@code settings} is what this API
+   * last set (the settings store's record, in shadow form), never pending; reported is {@code
+   * status} (a command's answer) when given, else the shadow's.
+   */
+  StreamDescription commanded(String id, Map<String, Object> settings, Optional<Document> status) {
+    return describe(id, settings, status.or(() -> reportedStream(id)), true);
+  }
+
   private StreamDescription describe(String id, Map<String, Object> desired) {
-    Optional<Document> reportedDoc = reportedStream(id);
+    return describe(id, desired, reportedStream(id), false);
+  }
+
+  // `pending` is deprecated in the contract but still required: false for devices on commands.
+  @SuppressWarnings("deprecation")
+  private StreamDescription describe(
+      String id, Map<String, Object> desired, Optional<Document> reportedDoc, boolean commands) {
     final Optional<StreamReported> reported = reportedDoc.flatMap(this::reportedOf);
     final List<RejectedSetting> rejected =
         reportedDoc.map(r -> ShadowJson.list(r, "rejected")).orElse(List.of()).stream()
@@ -172,7 +205,7 @@ record StreamShadow(Document document) {
         StreamDescription.builder()
             .streamId(id)
             .desired(desiredShape.build())
-            .pending(pending(desired, reportedDoc, rejected));
+            .pending(!commands && pending(desired, reportedDoc, rejected));
     reported.ifPresent(stream::reported);
     if (!rejected.isEmpty()) {
       stream.rejected(rejected);
@@ -398,6 +431,36 @@ record StreamShadow(Document document) {
   /** Every field a source has in shadow form, whatever its type. */
   private static final List<String> SOURCE_FIELDS =
       List.of("video", "audio", "camera", "size", "fps");
+
+  /** {@code source} as a stream command takes it: the Control API's union, snake_case. */
+  static Map<String, Object> sourceArg(Source source) {
+    Map<String, Object> inner = new LinkedHashMap<>();
+    String kind;
+    switch (source) {
+      case Source.CameraMember(CameraSource camera) -> {
+        kind = "camera";
+        inner.put("video", camera.getVideo());
+        if (camera.getAudio() != null) {
+          inner.put("audio", camera.getAudio());
+        }
+      }
+      case Source.RtmpMember(RtmpSource rtmp) -> {
+        kind = "rtmp";
+        inner.put("key", rtmp.getKey());
+      }
+      case Source.TestMember(TestSource test) -> {
+        kind = "test";
+        if (test.getSize() != null) {
+          inner.put("size", test.getSize());
+        }
+        if (test.getFps() != null) {
+          inner.put("fps", test.getFps());
+        }
+      }
+      default -> throw new IllegalArgumentException("unknown source " + source);
+    }
+    return Map.of(kind, inner);
+  }
 
   /**
    * The desired-state update that sets {@code source}: its fields, and null for every other source

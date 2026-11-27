@@ -86,6 +86,9 @@ export const CONTROL_WRITE_SHADOWS: ReadonlyArray<string> = ['stream'];
 export const IOT_COMMANDS: ReadonlyArray<[string, string]> = [
   ['net', 'wifi.set'],
   ['net', 'wifi.remove'],
+  ['stream', 'start'],
+  ['stream', 'stop'],
+  ['stream', 'update'],
 ];
 
 /**
@@ -172,6 +175,14 @@ export class BootstrapStack extends NestedStack {
   /** Issued challenges, removed by TTL after they expire. */
   readonly challenges: TableV2;
 
+  /**
+   * What the Control API last set on each device (a stream's settings, a
+   * Wi-Fi network's passphrase), keyed by deviceId and item
+   * (`stream#<id>`, `wifi#<ssid>`). Holds secrets that operators may read
+   * back (owner, 2026-11-26), encrypted at rest.
+   */
+  readonly controlSettings: TableV2;
+
   /** The device API Lambda. */
   readonly deviceApi: Function;
 
@@ -218,6 +229,12 @@ export class BootstrapStack extends NestedStack {
       partitionKey: {name: 'challengeId', type: AttributeType.STRING},
       timeToLiveAttribute: 'expiresAt',
       removalPolicy: RemovalPolicy.DESTROY,
+    });
+    this.controlSettings = new TableV2(this, 'ControlSettings', {
+      ...TABLE_SETTINGS,
+      partitionKey: {name: 'deviceId', type: AttributeType.STRING},
+      sortKey: {name: 'item', type: AttributeType.STRING},
+      removalPolicy: RemovalPolicy.RETAIN,
     });
 
     // The function's log group is also the audit log (Bootstrap API,
@@ -286,6 +303,7 @@ export class BootstrapStack extends NestedStack {
       }),
       environment: {
         DEVICES_TABLE: this.devices.tableName,
+        SETTINGS_TABLE: this.controlSettings.tableName,
         IOT_DATA_ENDPOINT: props.defaultAws.iotEndpoint,
         // For the Helios commands' and things' ARNs.
         IOT_ARN_PREFIX: `arn:${this.partition}:iot:${this.region}:${this.account}`,
@@ -480,6 +498,15 @@ export class BootstrapStack extends NestedStack {
       new PolicyStatement({
         actions: ['dynamodb:GetItem', 'dynamodb:Scan'],
         resources: [this.devices.tableArn],
+      }),
+      new PolicyStatement({
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+        ],
+        resources: [this.controlSettings.tableArn],
       }),
       new PolicyStatement({
         actions: ['iot:GetThingShadow'],

@@ -2,6 +2,7 @@ package tv.kenley.helios.cloud.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -358,6 +359,58 @@ class WifiControlTest {
     assertThrows(
         IllegalStateException.class,
         () -> wifi.set(SetWifiNetworkInput.builder().deviceId(ID).ssid("Cafe").build()));
-    assertEquals(Duration.ofMillis(400), WifiControl.POLL);
+    assertEquals(Duration.ofMillis(400), CommandRunner.POLL);
+  }
+
+  @Test
+  void keepsPassphrasesForOperators() {
+    reportSecretsKey(Sealing.SUITE);
+    StreamCommandsTest.MemorySettings settings = new StreamCommandsTest.MemorySettings();
+    DeviceDirectory devices = mock(DeviceDirectory.class);
+    when(devices.get(ID))
+        .thenReturn(
+            Optional.of(
+                DeviceSummary.builder()
+                    .deviceId(ID)
+                    .thingName(THING)
+                    .role(DeviceRole.TRANSCODER)
+                    .status(DeviceStatus.ACTIVE)
+                    .build()));
+    WifiControl kept =
+        new WifiControl(
+            devices, shadows, new CommandRunner(commands, clock, duration -> {}), settings);
+
+    commands.answer(
+        succeeded("{\"network\":{\"ssid\":\"Home\",\"security\":\"personal\",\"hidden\":false}}"));
+    assertEquals(
+        "correct horse battery",
+        kept.set(input("Home", "correct horse battery")).getNetwork().getPassphrase());
+    commands.answer(
+        succeeded("{\"network\":{\"ssid\":\"Cafe\",\"security\":\"open\",\"hidden\":false}}"));
+    assertNull(kept.set(input("Cafe", null)).getNetwork().getPassphrase());
+
+    shadows.documents.put(
+        THING + "/net",
+        """
+        {"state": {"reported": {"wifi": {"networks": [
+          {"ssid": "Home", "security": "personal", "hidden": false},
+          {"ssid": "Cafe", "security": "open", "hidden": false},
+          {"ssid": "Other", "security": "personal", "hidden": false}
+        ]}}}}
+        """
+            .getBytes(StandardCharsets.UTF_8));
+    var networks = kept.list(ID).getNetworks();
+    assertEquals("correct horse battery", networks.get(0).getPassphrase());
+    assertNull(networks.get(1).getPassphrase(), "open");
+    assertNull(networks.get(2).getPassphrase(), "set some other way");
+
+    commands.answer(succeeded("{\"removed\":true}"));
+    kept.delete(ID, "Home");
+    assertTrue(settings.items.isEmpty());
+
+    // A refused change keeps nothing.
+    commands.answer(new Commands.Execution("FAILED", "INVALID_PASSPHRASE", "too short", null));
+    assertThrows(WifiNetworkRefused.class, () -> kept.set(input("Home", "correct horse battery")));
+    assertTrue(settings.items.isEmpty());
   }
 }
