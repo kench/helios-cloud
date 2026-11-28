@@ -52,7 +52,7 @@ describe('ProvisioningStack', () => {
     ]);
   });
 
-  it('allows creating and attaching per-device IoT resources and, for now, commands', () => {
+  it('allows creating and attaching per-device IoT resources, reading shadows and, for now, commands', () => {
     const template = synthesize();
     template.hasResourceProperties('AWS::IAM::Role', {
       ManagedPolicyArns: Match.absent(),
@@ -77,6 +77,12 @@ describe('ProvisioningStack', () => {
         Action: ['iot:AttachThingPrincipal', 'iot:AttachPolicy'],
         Effect: 'Allow',
         Resource: `${IOT}:cert/*`,
+      },
+      // Reading named shadows, and nothing that changes or deletes one.
+      {
+        Action: ['iot:GetThingShadow', 'iot:ListNamedShadowsForThing'],
+        Effect: 'Allow',
+        Resource: [`${IOT}:thing/*/*`, `${IOT}:thing/*`],
       },
       // RegisterDevice, GetDevice, UpdateDevice, SetDevicePin and
       // PutChallengeKey on the bootstrap admin API, and nothing else there (no
