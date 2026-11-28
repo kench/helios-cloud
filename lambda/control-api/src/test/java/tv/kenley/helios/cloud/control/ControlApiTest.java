@@ -266,11 +266,6 @@ class ControlApiTest {
           public Optional<byte[]> get(String thingName, String name) {
             throw new IllegalStateException("throttled");
           }
-
-          @Override
-          public long update(String thingName, String name, byte[] document) {
-            throw new IllegalStateException("throttled");
-          }
         };
     api = api(ControlServiceTest.service(devices, broken, commands, settings));
     RestJson.Response response = call("GET", BASE + "/streams", "");

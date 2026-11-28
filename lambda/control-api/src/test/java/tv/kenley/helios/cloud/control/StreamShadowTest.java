@@ -78,7 +78,6 @@ class StreamShadowTest {
     StreamShadow s = shadow("stream-shadow-control.json");
     assertEquals(42, s.version());
     assertEquals(List.of("backpack", "pattern", "pocket"), s.streamIds());
-    assertTrue(s.hasDesired("pocket"), "left in the shadow from before commands");
     Map<String, Object> set = new java.util.LinkedHashMap<>();
     set.put("state", "live");
     set.put("source", Map.of("type", "rtmp", "camera", 1));

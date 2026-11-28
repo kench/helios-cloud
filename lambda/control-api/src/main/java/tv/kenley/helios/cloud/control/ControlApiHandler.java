@@ -70,7 +70,7 @@ public final class ControlApiHandler
             Clock.systemUTC(),
             duration -> Thread.sleep(duration));
     return new ControlApi(
-        new ControlService(devices, shadows, new StreamCommands(runner, shadows, settings)),
+        new ControlService(devices, shadows, new StreamCommands(runner, settings)),
         new WifiControl(devices, shadows, runner, settings),
         System.out::println,
         System.err::println,

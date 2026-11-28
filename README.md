@@ -157,9 +157,9 @@ applies a change whole or refuses it whole (`StreamChangeRefused`, 409) within 1
 fails with `DeviceUnreachable` (504); nothing is queued. A destination goes to the device sealed to
 its key. What was set is kept in the `ControlSettings` table (`SettingsStore`, encrypted at rest;
 also Wi-Fi passphrases), which GetStream and ListWifiNetworks show to operators. The `stream`
-shadow is only read: before each command the stream's old desired state is cleared, for Helios
-0.16.0, which still reads it (from 0.17.0 the device clears it itself). A Helios before 0.16.0
-answers an update with `DeviceStateUnavailable`. `pending` is always false and `rejected` is never
+shadow is only read; the Control API writes no shadow. Stream changes need Helios 0.17.0 or later
+(0.16.0 still reads desired state left in its shadow), and a Helios before 0.16.0 answers an update
+with `DeviceStateUnavailable`. `pending` is always false and `rejected` is never
 set (the contract deprecates `pending`). Changes answer 202 (Notion: *Helios - State Management:
 Tenets and Practices*).
 Destinations are SRT or SRTLA URLs only, checked by `Destinations.java` and stored in a normal

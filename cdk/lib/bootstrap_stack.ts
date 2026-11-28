@@ -69,7 +69,8 @@ export const CONTROL_API_HANDLER =
 
 /**
  * The device shadows the control API reads (`net` for the Wi-Fi networks and
- * GetDeviceUplinks, `gps` for GetDeviceLocation); it writes only `stream`.
+ * GetDeviceUplinks, `gps` for GetDeviceLocation); it writes none: changes are
+ * commands.
  */
 export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = [
   'gps',
@@ -77,7 +78,6 @@ export const CONTROL_READ_SHADOWS: ReadonlyArray<string> = [
   'net',
   'stream',
 ];
-export const CONTROL_WRITE_SHADOWS: ReadonlyArray<string> = ['stream'];
 
 /**
  * The Helios commands the control API sends as AWS IoT command executions
@@ -511,10 +511,6 @@ export class BootstrapStack extends NestedStack {
       new PolicyStatement({
         actions: ['iot:GetThingShadow'],
         resources: shadows(CONTROL_READ_SHADOWS),
-      }),
-      new PolicyStatement({
-        actions: ['iot:UpdateThingShadow'],
-        resources: shadows(CONTROL_WRITE_SHADOWS),
       }),
       new PolicyStatement({
         actions: ['iot:StartCommandExecution', 'iot:GetCommandExecution'],
