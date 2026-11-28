@@ -28,10 +28,12 @@ import tv.kenley.helios.cloud.control.model.StopStreamInput;
 import tv.kenley.helios.cloud.control.model.UpdateStreamInput;
 
 /**
- * The Control API's HTTP side, in {@code restJson1} (HLD section 7.3). API Gateway checks the IAM
- * signature before the request gets here; every call writes one audit line with the caller's ARN,
- * and a destination change also records the new destination (its SRT passphrase as {@code ***}), a
- * Wi-Fi change the SSID (never the passphrase).
+ * The Control API's HTTP side, in {@code restJson1} (HLD section 7.3). API Gateway checks the
+ * caller before the request gets here: an IAM signature (the REST API), or an identity provider
+ * access token with the route's scope (the HTTP API for browsers). Every call writes one audit line
+ * with the caller (an IAM ARN, or {@code <idp_iss>#<idp_sub>} for a token), and a destination
+ * change also records the new destination (its SRT passphrase as {@code ***}), a Wi-Fi change the
+ * SSID (never the passphrase).
  */
 final class ControlApi {
   private static final String DEVICES = "^/v1/control/devices";

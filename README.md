@@ -36,6 +36,16 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   SigV4 signature, and `helios-provisioning` may call `RegisterDevice` and `GetDevice` only. The
   control routes (`/v1/control/…`) need a SigV4 signature too, and `helios-operator` may call
   them all.
+  The same control routes are also served for browsers (the console) by an HTTP API,
+  `helios-control-tokens` (output `ControlTokenApiUrl`; dual-stack, throttled like the REST API):
+  its JWT authorizer takes access tokens from kench/identity-provider (Cognito; issuer in
+  `bin/helios_cloud.ts`) issued for the Helios Control API, `aud`
+  `https://helios-control.services.kenley.tv` (a client gets it by sending that as RFC 8707's
+  `resource`), and each route needs a scope: `…/read` for reads, `…/write` for changes (401 for a
+  bad token, 403 for a missing scope). CORS allows only the console's origin and
+  `http://localhost:5173`. It calls the same Lambda with payload format 1.0, and the audit line
+  names a token's caller as `<idp_iss>#<idp_sub>`. Anyone the identity provider signs in may use it
+  for now.
 - `AptRepository`: the public APT repository the Debian devices (relay and transcoder) install
   Helios from. A private, versioned S3 bucket in the account-regional namespace
   (`helios-apt-<account>-<region>-an`; replaced versions kept 30 days) behind a CloudFront

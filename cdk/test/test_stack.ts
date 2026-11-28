@@ -17,6 +17,10 @@ export const IOT_ENDPOINTS = {
   credentials: 'example.credentials.iot.us-west-2.amazonaws.com',
 };
 
+/** The identity provider issuer the tests give the stack. */
+export const ISSUER =
+  'https://issuer-cognito-idp.us-west-2.amazonaws.com/us-west-2_example';
+
 /** A stand-in for the console's build/client. */
 export const CONSOLE_FIXTURE = join(__dirname, 'fixtures', 'console');
 
@@ -28,6 +32,7 @@ export function testStack(): HeliosCloudStack {
     adminApiCode: Code.fromAsset(join(__dirname, 'fixtures', 'lambda')),
     controlApiCode: Code.fromAsset(join(__dirname, 'fixtures', 'lambda')),
     iotEndpoints: IOT_ENDPOINTS,
+    identityProviderIssuer: ISSUER,
     console: {
       site: Source.asset(CONSOLE_FIXTURE),
       indexHtml: readFileSync(join(CONSOLE_FIXTURE, 'index.html'), 'utf8'),

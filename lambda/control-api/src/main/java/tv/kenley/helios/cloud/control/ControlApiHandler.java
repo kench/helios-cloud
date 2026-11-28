@@ -15,10 +15,11 @@ import software.amazon.awssdk.services.iotjobsdataplane.IotJobsDataPlaneClient;
 import tv.kenley.helios.cloud.common.LambdaEvents;
 
 /**
- * The Lambda entry point for the Control API, behind IAM-authorized API Gateway routes. Its handler
- * string is {@code tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest}. It reads
- * {@code DEVICES_TABLE}, {@code IOT_DATA_ENDPOINT} (the account's {@code iot:Data-ATS} host, for
- * shadows and for starting command executions) and {@code IOT_ARN_PREFIX} ({@code
+ * The Lambda entry point for the Control API, behind IAM-authorized REST API routes and the
+ * token-authorized HTTP API for browsers (payload format 1.0, the same event). Its handler string
+ * is {@code tv.kenley.helios.cloud.control.ControlApiHandler::handleRequest}. It reads {@code
+ * DEVICES_TABLE}, {@code IOT_DATA_ENDPOINT} (the account's {@code iot:Data-ATS} host, for shadows
+ * and for starting command executions) and {@code IOT_ARN_PREFIX} ({@code
  * arn:aws:iot:<region>:<account>}, for command and thing ARNs) from the environment.
  */
 public final class ControlApiHandler
