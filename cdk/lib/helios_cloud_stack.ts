@@ -142,6 +142,8 @@ export class HeliosCloudStack extends Stack {
 
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
+    // And reads the control audit log, to check who changed what.
+    this.bootstrap.grantAuditRead(this.provisioning.provisioningRole);
 
     // Operators control devices' streams through the control API.
     this.bootstrap.grantControl(this.operator.operatorRole);
@@ -157,6 +159,11 @@ export class HeliosCloudStack extends Stack {
     new CfnOutput(this, 'BootstrapUrl', {
       description: "Helios's bootstrap.url (the default execute-api domain)",
       value: this.bootstrap.bootstrapUrl,
+    });
+    new CfnOutput(this, 'ControlAuditLogGroup', {
+      description:
+        'The control audit log (helios-provisioning may read it): filter for control-audit',
+      value: this.bootstrap.controlAuditLog.logGroupName,
     });
     new CfnOutput(this, 'ControlTokenApiUrl', {
       description:

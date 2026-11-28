@@ -100,6 +100,24 @@ describe('ProvisioningStack', () => {
           expect.stringMatching(apiRoute('PATCH', '/v1/admin/devices/\\*')),
         ],
       },
+      // Reading the control audit log, and no other log group
+      // (BootstrapStack.grantAuditRead): its name and its streams.
+      {
+        Action: [
+          'logs:DescribeLogStreams',
+          'logs:FilterLogEvents',
+          'logs:GetLogEvents',
+        ],
+        Effect: 'Allow',
+        Resource: [
+          expect.stringMatching(
+            new RegExp(
+              `^arn:aws:logs:${REGION}:${ACCOUNT}:log-group:.*ControlApiLogs.*Ref`,
+            ),
+          ),
+          {Ref: expect.stringMatching(/ControlApiLogs.*Arn$/)},
+        ],
+      },
       // Temporary: commands, as for helios-operator (HeliosCloudStack).
       {
         Action: 'iot:Connect',
