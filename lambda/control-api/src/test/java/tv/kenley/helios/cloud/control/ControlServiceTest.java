@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,21 +33,13 @@ class ControlServiceTest {
   static final String ID = DeviceDirectoryTest.ID;
   static final String THING = DeviceDirectoryTest.THING;
 
-  /** Shadows in memory, recording every update. */
+  /** Shadows in memory. */
   static final class FakeShadows implements Shadows {
     final Map<String, byte[]> documents = new HashMap<>();
-    final List<String> updates = new ArrayList<>();
-    long version = 43;
 
     @Override
     public Optional<byte[]> get(String thingName, String name) {
       return Optional.ofNullable(documents.get(thingName + "/" + name));
-    }
-
-    @Override
-    public long update(String thingName, String name, byte[] document) {
-      updates.add(thingName + "/" + name + " " + new String(document, StandardCharsets.UTF_8));
-      return version++;
     }
   }
 
@@ -61,7 +52,7 @@ class ControlServiceTest {
     WifiControlTest.Moving clock = new WifiControlTest.Moving();
     CommandRunner runner =
         new CommandRunner(commands, clock, duration -> clock.now = clock.now.plus(duration));
-    return new ControlService(devices, shadows, new StreamCommands(runner, shadows, settings));
+    return new ControlService(devices, shadows, new StreamCommands(runner, settings));
   }
 
   private FakeShadows shadows;
@@ -195,7 +186,6 @@ class ControlServiceTest {
                         .profile("nope")
                         .build()));
     assertEquals("profile", profile.getSetting());
-    assertTrue(shadows.updates.isEmpty(), "nothing written");
     assertTrue(commands.started.isEmpty(), "no command sent");
   }
 
@@ -211,7 +201,6 @@ class ControlServiceTest {
                     .streamId("pocket")
                     .url("srt://host:1?mode=listener")
                     .build()));
-    assertTrue(shadows.updates.isEmpty());
     assertTrue(commands.started.isEmpty());
   }
 }

@@ -281,11 +281,6 @@ describe('BootstrapStack', () => {
         ],
       },
       {
-        Action: 'iot:UpdateThingShadow',
-        Effect: 'Allow',
-        Resource: `${thing}/*/stream`,
-      },
-      {
         Action: ['iot:StartCommandExecution', 'iot:GetCommandExecution'],
         Effect: 'Allow',
         Resource: [

@@ -61,11 +61,6 @@ record StreamShadow(Document document) {
         new TreeSet<>(ShadowJson.map(document, "state", "reported", "streams").keySet()));
   }
 
-  /** Whether the shadow holds desired state for stream {@code id} (left from before commands). */
-  boolean hasDesired(String id) {
-    return ShadowJson.at(document, "state", "desired", "streams", id).isPresent();
-  }
-
   /** Whether the device reports a stream {@code id}. */
   boolean hasStream(String id) {
     return ShadowJson.at(document, "state", "reported", "streams", id).isPresent();

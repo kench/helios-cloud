@@ -19,10 +19,6 @@ import tv.kenley.helios.cloud.control.model.StreamNotFound;
  * stream as it is after the change. What was set is kept in the settings store, which GetStream
  * shows as {@code desired}. A Helios before 0.16.0 takes start and stop but not update, which it
  * answers as an unknown command.
- *
- * <p>The stream's old desired state is cleared before the command is sent: left in place, AWS IoT
- * sends it back as a delta when the device reports the change, and Helios 0.16.0 (which still reads
- * desired state) undoes the command (found live, 2026-11-26).
  */
 final class StreamCommands {
   static final String START = "helios-stream-start-v1";
@@ -30,16 +26,14 @@ final class StreamCommands {
   static final String UPDATE = "helios-stream-update-v1";
 
   private final CommandRunner runner;
-  private final Shadows shadows;
   private final SettingsStore settings;
 
-  StreamCommands(CommandRunner runner, Shadows shadows, SettingsStore settings) {
+  StreamCommands(CommandRunner runner, SettingsStore settings) {
     this.runner = runner;
-    this.shadows = shadows;
     this.settings = settings;
   }
 
-  /** A change's result: the stream after it, and the {@code stream} shadow's version. */
+  /** A change's result: the stream after it, and the {@code stream} shadow's version it read. */
   record Applied(StreamDescription stream, long version) {}
 
   /** Stream {@code streamId} with what this API last set as {@code desired}. */
@@ -69,7 +63,6 @@ final class StreamCommands {
       String commandId,
       Map<String, Object> args,
       Map<String, Object> changes) {
-    final long version = clearDesired(device.getThingName(), shadow, streamId);
     Document result = outcome(runner.run(device.getThingName(), commandId, args), streamId);
     List<RefusedSetting> refused =
         ShadowJson.list(result, "refused").stream()
@@ -87,22 +80,7 @@ final class StreamCommands {
     Map<String, Object> record = recorded(device.getDeviceId(), streamId);
     record.putAll(changes);
     settings.put(device.getDeviceId(), SettingsStore.stream(streamId), record);
-    return new Applied(shadow.commanded(streamId, record, Optional.of(status)), version);
-  }
-
-  /**
-   * Removes the stream's desired state, if it has any; the shadow's version after. Only Helios
-   * 0.16.0 needs it: from 0.17.0 Helios reads no stream desired state and clears what's left
-   * itself, so this can go once every device runs 0.17.0 or later.
-   */
-  private long clearDesired(String thing, StreamShadow shadow, String streamId) {
-    if (!shadow.hasDesired(streamId)) {
-      return shadow.version();
-    }
-    Map<String, Object> streams = new LinkedHashMap<>();
-    streams.put(streamId, ShadowJson.NULL);
-    Map<String, Object> document = Map.of("state", Map.of("desired", Map.of("streams", streams)));
-    return shadows.update(thing, ControlService.STREAM_SHADOW, ShadowJson.bytes(document));
+    return new Applied(shadow.commanded(streamId, record, Optional.of(status)), shadow.version());
   }
 
   /** A processed command's result, or the error for one the device couldn't process. */

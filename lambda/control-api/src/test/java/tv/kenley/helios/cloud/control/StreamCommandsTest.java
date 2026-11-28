@@ -166,14 +166,8 @@ class StreamCommandsTest {
     assertEquals(80, stream.getDesired().getSourceCeilingPercent());
     assertEquals("cam", stream.getReported().getProfile(), "reported from the command's answer");
 
-    // Kept for GetStream, and the stream's old desired state cleared.
+    // Kept for GetStream.
     assertEquals("cam", service.getStream(ID, "pocket").getStream().getDesired().getProfile());
-    assertTrue(
-        shadows
-            .updates
-            .getLast()
-            .endsWith("{\"state\":{\"desired\":{\"streams\":{\"pocket\":null}}}}"),
-        shadows.updates.getLast());
 
     // Back to the profile's bitrate: "configured", kept as no override.
     commands.answer(succeeded(STATUS));
@@ -219,32 +213,6 @@ class StreamCommandsTest {
         List.of("profile", "sourceCeilingPercent"),
         refused.getRefused().stream().map(r -> r.getSetting()).toList());
     assertTrue(settings.items.isEmpty(), "nothing recorded");
-  }
-
-  @Test
-  void clearsTheOldDesiredStateBeforeTheCommand() {
-    // Left until after, AWS IoT sends it back as a delta when the device reports the change, and
-    // the device undoes the command (found live on the Pi 5, 2026-11-26).
-    String clear = "{\"state\":{\"desired\":{\"streams\":{\"pocket\":null}}}}";
-    commands.onStart =
-        () ->
-            assertTrue(
-                shadows.updates.stream().anyMatch(u -> u.endsWith(clear)),
-                "cleared before the command: " + shadows.updates);
-    commands.answer(succeeded(STATUS));
-    service.update(
-        UpdateStreamInput.builder()
-            .deviceId(ID)
-            .streamId("pocket")
-            .bitrate(BitrateSetting.builder().profileDefault(Unit.getInstance()).build())
-            .build());
-    assertEquals(1, shadows.updates.size(), "once");
-
-    // A stream without desired state: nothing to clear.
-    commands.onStart = () -> {};
-    commands.answer(succeeded(STATUS));
-    service.start(ID, "pattern");
-    assertEquals(1, shadows.updates.size());
   }
 
   @Test
