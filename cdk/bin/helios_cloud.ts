@@ -5,11 +5,12 @@
  * its own stack (LLD 2, section 8).
  */
 
-import {existsSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 
 import {App} from 'aws-cdk-lib';
 import {Code} from 'aws-cdk-lib/aws-lambda';
+import {Source} from 'aws-cdk-lib/aws-s3-deployment';
 
 import {HeliosCloudStack} from '../lib/helios_cloud_stack';
 
@@ -42,6 +43,21 @@ function lambdaPackage(project: string): Code {
   return Code.fromAsset(zip);
 }
 
+/**
+ * The console as built by `npm ci && npm run build` in ../console (the
+ * helios-console submodule).
+ */
+function consoleSite() {
+  const dir = join(__dirname, '..', '..', 'console', 'build', 'client');
+  const index = join(dir, 'index.html');
+  if (!existsSync(index)) {
+    throw new Error(
+      `${index} not found: run npm ci && npm run build in console/ first`,
+    );
+  }
+  return {site: Source.asset(dir), indexHtml: readFileSync(index, 'utf8')};
+}
+
 const app = new App();
 new HeliosCloudStack(app, 'HeliosCloud', {
   env: {account: ACCOUNT, region: REGION},
@@ -49,4 +65,5 @@ new HeliosCloudStack(app, 'HeliosCloud', {
   adminApiCode: lambdaPackage('admin-api'),
   controlApiCode: lambdaPackage('control-api'),
   iotEndpoints: IOT_ENDPOINTS,
+  console: consoleSite(),
 });

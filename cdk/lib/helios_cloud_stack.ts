@@ -2,17 +2,21 @@
  * @fileoverview The CloudFormation stack for the Helios cloud resources.
  *
  * Each group of resources is a nested stack: device identity, provisioning,
- * operating devices, the bootstrap service (Bootstrap API, section 7), and the
- * APT repository for Helios releases.
+ * operating devices, the bootstrap service (Bootstrap API, section 7), the
+ * APT repository for Helios releases, and the console (the Control API's web
+ * UI).
  */
 
 import {CfnOutput, Stack} from 'aws-cdk-lib';
 import type {StackProps} from 'aws-cdk-lib';
 import type {Code} from 'aws-cdk-lib/aws-lambda';
+import type {ISource} from 'aws-cdk-lib/aws-s3-deployment';
 import type {Construct} from 'constructs';
 
 import {AptRepositoryStack} from './apt_repository_stack';
 import {BootstrapStack} from './bootstrap_stack';
+import {ConsoleStack} from './console_stack';
+import type {ConsoleDomain} from './console_stack';
 import {
   DEVICE_ROLE_ALIAS_NAME,
   DeviceIdentityStack,
@@ -38,6 +42,14 @@ export interface HeliosCloudStackProps extends StackProps {
   readonly controlApiCode: Code;
   /** The account's AWS IoT endpoints. */
   readonly iotEndpoints: IotEndpoints;
+  /** The console's built site (helios-console's `build/client`). */
+  readonly console: {
+    readonly site: ISource;
+    /** Its `index.html`, for the content security policy. */
+    readonly indexHtml: string;
+    /** A custom domain; CloudFront's default domain only, if absent. */
+    readonly domain?: ConsoleDomain;
+  };
 }
 
 /** The stack that holds all Helios cloud resources. */
@@ -56,6 +68,9 @@ export class HeliosCloudStack extends Stack {
 
   /** The APT repository for Helios releases. */
   readonly aptRepository: AptRepositoryStack;
+
+  /** The console, the Control API's web UI. */
+  readonly console: ConsoleStack;
 
   constructor(scope: Construct, id: string, props: HeliosCloudStackProps) {
     super(scope, id, {
@@ -78,6 +93,7 @@ export class HeliosCloudStack extends Stack {
     });
 
     this.aptRepository = new AptRepositoryStack(this, 'AptRepository');
+    this.console = new ConsoleStack(this, 'Console', props.console);
 
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
@@ -96,6 +112,10 @@ export class HeliosCloudStack extends Stack {
     new CfnOutput(this, 'BootstrapUrl', {
       description: "Helios's bootstrap.url (the default execute-api domain)",
       value: this.bootstrap.bootstrapUrl,
+    });
+    new CfnOutput(this, 'ConsoleUrl', {
+      description: "The console, at CloudFront's default domain",
+      value: this.console.url,
     });
     new CfnOutput(this, 'AptRepositoryUrl', {
       description: "The APT repository, for devices' sources",
