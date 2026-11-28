@@ -51,11 +51,22 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   `repo:kench@34564/helios-packages@1466772735:ref:refs/tags/*/*`): it may only read and write its
   own `trixie` suite (`pool/trixie/`, `dists/trixie/`) and its key
   (`keys/helios-packages-archive-keyring.asc`), which has its own signing key.
+- `Console`: the Helios console, the Control API's web UI (kench/helios-console, the `console/`
+  submodule). Its built site (`console/build/client`) goes into a private S3 bucket in the
+  account-regional namespace (`helios-console-…`), behind a CloudFront distribution with origin
+  access control, on its default domain over HTTPS (output `ConsoleUrl`). Paths that aren't files
+  get `index.html`, for the app's own routes. Files under `assets/` (hashed names) are cached for a
+  year, while `index.html` is checked on every load, and each deploy invalidates the distribution.
+  The content security policy allows only the console's own origin, plus the inline scripts React
+  Router writes into `index.html`, by SHA-256 hash computed at synth time. A custom domain needs an
+  ACM certificate in us-east-1, made by hand, and DNS records pointing at the distribution:
+  `ConsoleDomain` (`names`, `certificateArn`) in `bin/helios_cloud.ts`.
 
 ## Layout
 
 ```
 contract/             git submodule: helios-contract (the Smithy model), pinned to a release tag
+console/              git submodule: helios-console (the console's site), pinned to a commit on main
 lambda/               the Lambdas (Java 25, Gradle)
   model/                Java types generated from the contract with Smithy Java
   common/               shared by the Lambdas: restJson1 over API Gateway, IDs, log lines, keys
@@ -81,7 +92,8 @@ npm run build   # type-check (tsc)
 npm run lint    # gts: Google TypeScript style
 npm run fix     # apply gts formatting fixes
 npm test        # Jest with coverage; fails below 90% line coverage
-npx cdk synth   # synthesize the CloudFormation template into cdk.out/ (needs the Lambda zip below)
+npx cdk synth   # synthesize the CloudFormation template into cdk.out/ (needs the Lambda zip below
+                # and the console's build: npm ci && npm run build in console/)
 ```
 
 `npx cdk deploy` changes the real AWS account. Don't run it unless a change is meant to be

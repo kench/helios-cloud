@@ -1,3 +1,6 @@
 [submodule "contract"]
 	path = contract
 	url = https://github.com/kench/helios-contract.git
+[submodule "console"]
+	path = console
+	url = https://github.com/kench/helios-console.git

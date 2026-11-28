@@ -125,7 +125,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The helios-contract submodule, for the Lambda's generated types.
+          # The submodules: helios-contract, for the Lambda's generated types, and
+          # helios-console, the console's site.
           submodules: true
 
       # The Lambda packages (device and admin API), which the app deploys as assets.
@@ -147,10 +148,20 @@ jobs:
         with:
           node-version-file: cdk/.nvmrc
           cache: npm
-          cache-dependency-path: cdk/package-lock.json
+          cache-dependency-path: |
+            cdk/package-lock.json
+            console/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      # The console (the helios-console submodule), which the app deploys from
+      # console/build/client.
+      - name: Build the console
+        working-directory: console
+        run: |
+          npm ci
+          npm run build
 
       # Synthesizes the CloudFormation template without AWS credentials. Deploys run
       # from deploy.yml, by hand.

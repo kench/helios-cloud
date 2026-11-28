@@ -19,13 +19,10 @@ describe('HeliosCloudStack', () => {
     const resources: Record<string, CfnResource> =
       synthesize().toJSON()['Resources'] ?? {};
     const types = Object.values(resources).map(resource => resource.Type);
-    expect(types.filter(type => type !== CDK_METADATA)).toEqual([
-      'AWS::CloudFormation::Stack',
-      'AWS::CloudFormation::Stack',
-      'AWS::CloudFormation::Stack',
-      'AWS::CloudFormation::Stack',
-      'AWS::CloudFormation::Stack',
-    ]);
+    // Device identity, provisioning, operator, bootstrap, APT and console.
+    expect(types.filter(type => type !== CDK_METADATA)).toEqual(
+      Array(6).fill('AWS::CloudFormation::Stack'),
+    );
   });
 
   it('outputs the bootstrap URL', () => {
@@ -44,6 +41,11 @@ describe('HeliosCloudStack', () => {
     ]) {
       expect(Object.keys(template.findOutputs(name))).toHaveLength(1);
     }
+  });
+
+  it('outputs the console URL', () => {
+    const outputs = synthesize().findOutputs('ConsoleUrl');
+    expect(Object.keys(outputs)).toHaveLength(1);
   });
 
   it('has a description', () => {
