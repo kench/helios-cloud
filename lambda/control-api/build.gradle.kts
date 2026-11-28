@@ -33,6 +33,11 @@ dependencies {
 
 tasks.test {
     jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${mockitoAgent.asPath}") })
+    // The report vectors from the contract (helios-contract): how reports become read responses.
+    val reportVectors = file("../../contract/test-vectors/control-reports-v1.json")
+    // An input, so the tests run again when only the vectors change.
+    inputs.file(reportVectors).withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("helios.contract.reportVectors", reportVectors.absolutePath)
 }
 
 val lambdaZip = tasks.register<Zip>("lambdaZip") {
