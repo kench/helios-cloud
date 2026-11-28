@@ -71,6 +71,13 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   Router writes into `index.html`, by SHA-256 hash computed at synth time. A custom domain needs an
   ACM certificate in us-east-1, made by hand, and DNS records pointing at the distribution:
   `ConsoleDomain` (`names`, `certificateArn`) in `bin/helios_cloud.ts`.
+  The console's settings are `config.json` beside the site, written at deploy time by
+  `ConsoleConfig` (its own nested stack, since it needs the Control API for browsers' URL):
+  `apiUrl`, and `auth` (the identity provider's domain, the console's client ID, the `resource` and
+  the scopes; `IDENTITY_PROVIDER` in `bin/helios_cloud.ts`, from kench/identity-provider's outputs).
+  The CSP's `connect-src` adds the identity provider's domain and
+  `https://*.execute-api.us-west-2.amazonaws.com` (the API can't be named exactly there without a
+  cycle; a custom domain will narrow it).
 
 ## Layout
 

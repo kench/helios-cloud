@@ -59,11 +59,16 @@ function consoleSite() {
 }
 
 /**
- * The identity provider's issuer (kench/identity-provider, output `Issuer`):
- * the Control API for browsers accepts its access tokens.
+ * The identity provider (kench/identity-provider's outputs `Issuer`,
+ * `CognitoDomain` and `HeliosConsoleClientId`): the console signs in with it,
+ * and the Control API for browsers accepts its access tokens.
  */
-const IDENTITY_PROVIDER_ISSUER =
-  'https://issuer-cognito-idp.us-west-2.amazonaws.com/us-west-2_CldV7cnq6';
+const IDENTITY_PROVIDER = {
+  issuer:
+    'https://issuer-cognito-idp.us-west-2.amazonaws.com/us-west-2_CldV7cnq6',
+  domain: 'https://kenley.auth.us-west-2.amazoncognito.com',
+  consoleClientId: '4oc7an51i0vsbl843d703uuh7m',
+};
 
 const app = new App();
 new HeliosCloudStack(app, 'HeliosCloud', {
@@ -72,6 +77,6 @@ new HeliosCloudStack(app, 'HeliosCloud', {
   adminApiCode: lambdaPackage('admin-api'),
   controlApiCode: lambdaPackage('control-api'),
   iotEndpoints: IOT_ENDPOINTS,
-  identityProviderIssuer: IDENTITY_PROVIDER_ISSUER,
+  identityProvider: IDENTITY_PROVIDER,
   console: consoleSite(),
 });

@@ -110,6 +110,9 @@ export class ControlTokenApi extends Construct {
           CorsHttpMethod.DELETE,
         ],
         allowHeaders: ['Authorization', 'Content-Type'],
+        // The modeled error's name (restJson1), so the console can tell
+        // StreamChangeRefused from DeviceUnreachable.
+        exposeHeaders: ['X-Amzn-Errortype'],
         maxAge: Duration.hours(1),
       },
     });
