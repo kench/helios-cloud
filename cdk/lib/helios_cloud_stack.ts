@@ -15,7 +15,9 @@ import type {Construct} from 'constructs';
 
 import {AptRepositoryStack} from './apt_repository_stack';
 import {BootstrapStack} from './bootstrap_stack';
+import {ConsoleConfigStack} from './console_config_stack';
 import {CONSOLE_DEV_ORIGIN, ConsoleStack} from './console_stack';
+import {HELIOS_CONTROL_AUDIENCE, controlScope} from './control_token_api';
 import type {ConsoleDomain} from './console_stack';
 import {
   DEVICE_ROLE_ALIAS_NAME,
@@ -32,6 +34,16 @@ export interface IotEndpoints {
   readonly credentials: string;
 }
 
+/** The identity provider's values, from kench/identity-provider's outputs. */
+export interface IdentityProvider {
+  /** `Issuer`: the `iss` of its tokens. */
+  readonly issuer: string;
+  /** `CognitoDomain`: where its managed login and OAuth endpoints are. */
+  readonly domain: string;
+  /** `HeliosConsoleClientId`: the console's app client (public). */
+  readonly consoleClientId: string;
+}
+
 /** Settings for {@link HeliosCloudStack}. */
 export interface HeliosCloudStackProps extends StackProps {
   /** The device API Lambda's deployment package. */
@@ -42,11 +54,8 @@ export interface HeliosCloudStackProps extends StackProps {
   readonly controlApiCode: Code;
   /** The account's AWS IoT endpoints. */
   readonly iotEndpoints: IotEndpoints;
-  /**
-   * The identity provider's issuer (kench/identity-provider's `Issuer`
-   * output), whose access tokens the Control API for browsers accepts.
-   */
-  readonly identityProviderIssuer: string;
+  /** The identity provider the console signs in with (kench/identity-provider). */
+  readonly identityProvider: IdentityProvider;
   /** The console's built site (helios-console's `build/client`). */
   readonly console: {
     readonly site: ISource;
@@ -77,6 +86,9 @@ export class HeliosCloudStack extends Stack {
   /** The console, the Control API's web UI. */
   readonly console: ConsoleStack;
 
+  /** The console's config.json: the API and sign-in. */
+  readonly consoleConfig: ConsoleConfigStack;
+
   constructor(scope: Construct, id: string, props: HeliosCloudStackProps) {
     super(scope, id, {
       description: 'Helios cloud resources (github.com/kench/helios-cloud)',
@@ -88,7 +100,16 @@ export class HeliosCloudStack extends Stack {
     this.operator = new OperatorStack(this, 'Operator');
     // Before the bootstrap stack: the Control API for browsers lets the
     // console's origin call it.
-    this.console = new ConsoleStack(this, 'Console', props.console);
+    this.console = new ConsoleStack(this, 'Console', {
+      ...props.console,
+      // The Control API for browsers can't be named exactly here (it
+      // depends on this stack, for CORS), so any API Gateway in the region:
+      // a custom domain will narrow it.
+      connectTo: [
+        props.identityProvider.domain,
+        `https://*.execute-api.${this.region}.amazonaws.com`,
+      ],
+    });
     this.bootstrap = new BootstrapStack(this, 'Bootstrap', {
       deviceApiCode: props.deviceApiCode,
       adminApiCode: props.adminApiCode,
@@ -99,12 +120,25 @@ export class HeliosCloudStack extends Stack {
         roleAlias: DEVICE_ROLE_ALIAS_NAME,
       },
       controlTokens: {
-        issuer: props.identityProviderIssuer,
+        issuer: props.identityProvider.issuer,
         allowedOrigins: [this.console.origin, CONSOLE_DEV_ORIGIN],
       },
     });
 
     this.aptRepository = new AptRepositoryStack(this, 'AptRepository');
+    this.consoleConfig = new ConsoleConfigStack(this, 'ConsoleConfig', {
+      bucket: this.console.bucket,
+      distribution: this.console.distribution,
+      config: {
+        apiUrl: this.bootstrap.controlTokenApi.url,
+        auth: {
+          domain: props.identityProvider.domain,
+          clientId: props.identityProvider.consoleClientId,
+          resource: HELIOS_CONTROL_AUDIENCE,
+          scopes: ['openid', controlScope('read'), controlScope('write')],
+        },
+      },
+    });
 
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);

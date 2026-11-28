@@ -85,6 +85,7 @@ describe('ControlTokenApi', () => {
       IpAddressType: 'dualstack',
       CorsConfiguration: {
         AllowHeaders: ['Authorization', 'Content-Type'],
+        ExposeHeaders: ['X-Amzn-Errortype'],
         AllowMethods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE'],
         MaxAge: 3600,
       },

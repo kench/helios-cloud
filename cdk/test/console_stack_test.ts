@@ -14,7 +14,12 @@ import {
   inlineScriptHashes,
 } from '../lib/console_stack';
 
-import {CONSOLE_FIXTURE, REGION, testStack} from './test_stack';
+import {
+  CONSOLE_FIXTURE,
+  IDENTITY_PROVIDER,
+  REGION,
+  testStack,
+} from './test_stack';
 
 const INDEX_HTML = readFileSync(join(CONSOLE_FIXTURE, 'index.html'), 'utf8');
 
@@ -85,6 +90,10 @@ describe('ConsoleStack', () => {
     expect(security['ContentSecurityPolicy']).toEqual({
       ContentSecurityPolicy: contentSecurityPolicy(
         inlineScriptHashes(INDEX_HTML),
+        [
+          IDENTITY_PROVIDER.domain,
+          `https://*.execute-api.${REGION}.amazonaws.com`,
+        ],
       ),
       Override: true,
     });
@@ -105,7 +114,9 @@ describe('ConsoleStack', () => {
     expect(deployments).toHaveLength(2);
     const [hashed, pages] = [
       deployments.find(d => JSON.stringify(d['Include']) === '["assets/*"]'),
-      deployments.find(d => JSON.stringify(d['Exclude']) === '["assets/*"]'),
+      deployments.find(
+        d => JSON.stringify(d['Exclude']) === '["assets/*","config.json"]',
+      ),
     ];
     expect(hashed?.['SystemMetadata']).toEqual({
       'cache-control': 'public, max-age=31536000, immutable',
@@ -158,6 +169,12 @@ describe('contentSecurityPolicy', () => {
         "object-src 'none'; base-uri 'self'; form-action 'self'; " +
         "frame-ancestors 'none'",
     );
+  });
+
+  it('lets the page call the given origins too', () => {
+    expect(
+      contentSecurityPolicy([], ['https://a.example', 'https://b.example']),
+    ).toContain("connect-src 'self' https://a.example https://b.example;");
   });
 
   it("refuses a policy longer than CloudFront's limit", () => {

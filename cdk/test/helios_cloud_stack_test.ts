@@ -19,9 +19,10 @@ describe('HeliosCloudStack', () => {
     const resources: Record<string, CfnResource> =
       synthesize().toJSON()['Resources'] ?? {};
     const types = Object.values(resources).map(resource => resource.Type);
-    // Device identity, provisioning, operator, bootstrap, APT and console.
+    // Device identity, provisioning, operator, console, bootstrap, APT and
+    // the console's config.
     expect(types.filter(type => type !== CDK_METADATA)).toEqual(
-      Array(6).fill('AWS::CloudFormation::Stack'),
+      Array(7).fill('AWS::CloudFormation::Stack'),
     );
   });
 

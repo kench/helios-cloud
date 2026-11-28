@@ -46,6 +46,12 @@ import type {Construct} from 'constructs';
 /** The prefix of the console bucket's name. */
 export const CONSOLE_BUCKET_PREFIX = 'helios-console';
 
+/**
+ * The console's settings, written beside the site at deploy time
+ * ({@link ConsoleConfigStack}): the API's URL and the sign-in client.
+ */
+export const CONSOLE_CONFIG_OBJECT = 'config.json';
+
 /** Where the build puts files whose names change with their content. */
 export const HASHED_PREFIX = 'assets/';
 
@@ -79,6 +85,11 @@ export interface ConsoleStackProps extends NestedStackProps {
   readonly indexHtml: string;
   /** A custom domain; CloudFront's default domain only, if absent. */
   readonly domain?: ConsoleDomain;
+  /**
+   * What the page may call besides its own origin (CSP `connect-src`): the
+   * identity provider's domain and the Control API.
+   */
+  readonly connectTo?: string[];
 }
 
 /** The nested stack for the console's bucket, distribution and deploys. */
@@ -113,6 +124,7 @@ export class ConsoleStack extends NestedStack {
         contentSecurityPolicy: {
           contentSecurityPolicy: contentSecurityPolicy(
             inlineScriptHashes(props.indexHtml),
+            props.connectTo ?? [],
           ),
           override: true,
         },
@@ -177,7 +189,9 @@ export class ConsoleStack extends NestedStack {
     const pages = new BucketDeployment(this, 'Pages', {
       sources: [props.site],
       destinationBucket: this.bucket,
-      exclude: [`${HASHED_PREFIX}*`],
+      // config.json is written by ConsoleConfigStack; left out here, it's
+      // neither uploaded nor pruned.
+      exclude: [`${HASHED_PREFIX}*`, CONSOLE_CONFIG_OBJECT],
       cacheControl: [CacheControl.noCache()],
       distribution: this.distribution,
       distributionPaths: ['/*'],
@@ -218,16 +232,19 @@ export function inlineScriptHashes(html: string): string[] {
 }
 
 /**
- * The console's content security policy: its own origin only, and the
- * inline scripts in `scriptHashes`.
+ * The console's content security policy: its own origin, the inline scripts
+ * in `scriptHashes`, and calls to `connectTo` too.
  */
-export function contentSecurityPolicy(scriptHashes: string[]): string {
+export function contentSecurityPolicy(
+  scriptHashes: string[],
+  connectTo: string[] = [],
+): string {
   const policy = [
     "default-src 'self'",
     `script-src 'self' ${scriptHashes.join(' ')}`.trim(),
     "style-src 'self'",
     "img-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self' ${connectTo.join(' ')}`.trim(),
     "font-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
