@@ -1,7 +1,8 @@
 /**
  * @fileoverview The provisioning role and user: what `provision-scanner.sh`
  * and other provisioning scripts need to create one device's AWS IoT
- * resources, and nothing else (Device Certificate Provisioning, Option A).
+ * resources, and nothing else (Device Certificate Provisioning, Option A),
+ * plus reading the devices' named shadows to check them.
  *
  * The `helios-provisioner` IAM user can do nothing but assume the role (and
  * `helios-operator`) and sign in to the AWS CLI with `aws login`, so provisioning doesn't use the
@@ -35,7 +36,8 @@ const CLI_SIGN_IN_POLICY = 'SignInLocalDevelopmentAccess';
 
 /**
  * The nested stack for provisioning. The role can create things and
- * certificates and attach them, but can't change, detach or delete anything.
+ * certificates and attach them, and read named shadows, but can't change,
+ * detach or delete anything.
  */
 export class ProvisioningStack extends NestedStack {
   /** The role provisioning scripts assume. */
@@ -77,6 +79,21 @@ export class ProvisioningStack extends NestedStack {
       new PolicyStatement({
         actions: ['iot:AttachThingPrincipal', 'iot:AttachPolicy'],
         resources: [iot('cert')],
+      }),
+      // Read-only: a device's named shadows (`thing/<thing>/<shadow>`), to
+      // check a new or upgraded device, for example that no desired state is
+      // left. Operators read devices through the Control API instead, not raw
+      // shadows (passphrases, exact position).
+      new PolicyStatement({
+        actions: ['iot:GetThingShadow', 'iot:ListNamedShadowsForThing'],
+        resources: [
+          this.formatArn({
+            service: 'iot',
+            resource: 'thing',
+            resourceName: '*/*',
+          }),
+          iot('thing'),
+        ],
       }),
     ]) {
       this.provisioningRole.addToPolicy(statement);
