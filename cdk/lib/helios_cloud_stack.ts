@@ -15,7 +15,7 @@ import type {Construct} from 'constructs';
 
 import {AptRepositoryStack} from './apt_repository_stack';
 import {BootstrapStack} from './bootstrap_stack';
-import {ConsoleStack} from './console_stack';
+import {CONSOLE_DEV_ORIGIN, ConsoleStack} from './console_stack';
 import type {ConsoleDomain} from './console_stack';
 import {
   DEVICE_ROLE_ALIAS_NAME,
@@ -42,6 +42,11 @@ export interface HeliosCloudStackProps extends StackProps {
   readonly controlApiCode: Code;
   /** The account's AWS IoT endpoints. */
   readonly iotEndpoints: IotEndpoints;
+  /**
+   * The identity provider's issuer (kench/identity-provider's `Issuer`
+   * output), whose access tokens the Control API for browsers accepts.
+   */
+  readonly identityProviderIssuer: string;
   /** The console's built site (helios-console's `build/client`). */
   readonly console: {
     readonly site: ISource;
@@ -81,6 +86,9 @@ export class HeliosCloudStack extends Stack {
     this.deviceIdentity = new DeviceIdentityStack(this, 'DeviceIdentity');
     this.provisioning = new ProvisioningStack(this, 'Provisioning');
     this.operator = new OperatorStack(this, 'Operator');
+    // Before the bootstrap stack: the Control API for browsers lets the
+    // console's origin call it.
+    this.console = new ConsoleStack(this, 'Console', props.console);
     this.bootstrap = new BootstrapStack(this, 'Bootstrap', {
       deviceApiCode: props.deviceApiCode,
       adminApiCode: props.adminApiCode,
@@ -90,10 +98,13 @@ export class HeliosCloudStack extends Stack {
         credentialsEndpoint: props.iotEndpoints.credentials,
         roleAlias: DEVICE_ROLE_ALIAS_NAME,
       },
+      controlTokens: {
+        issuer: props.identityProviderIssuer,
+        allowedOrigins: [this.console.origin, CONSOLE_DEV_ORIGIN],
+      },
     });
 
     this.aptRepository = new AptRepositoryStack(this, 'AptRepository');
-    this.console = new ConsoleStack(this, 'Console', props.console);
 
     // Provisioning registers each device it creates.
     this.bootstrap.grantProvisioning(this.provisioning.provisioningRole);
@@ -112,6 +123,11 @@ export class HeliosCloudStack extends Stack {
     new CfnOutput(this, 'BootstrapUrl', {
       description: "Helios's bootstrap.url (the default execute-api domain)",
       value: this.bootstrap.bootstrapUrl,
+    });
+    new CfnOutput(this, 'ControlTokenApiUrl', {
+      description:
+        'The Control API for browsers (identity provider access tokens)',
+      value: this.bootstrap.controlTokenApi.url,
     });
     new CfnOutput(this, 'ConsoleUrl', {
       description: "The console, at CloudFront's default domain",

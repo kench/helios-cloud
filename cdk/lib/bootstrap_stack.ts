@@ -37,6 +37,8 @@ import type {Code} from 'aws-cdk-lib/aws-lambda';
 import {LogGroup, RetentionDays} from 'aws-cdk-lib/aws-logs';
 import type {Construct} from 'constructs';
 
+import {ControlTokenApi} from './control_token_api';
+
 /**
  * The API stage. With the default execute-api domain the stage is part of
  * the URL, so Helios's `bootstrap.url` is `<api>/dev/v1`.
@@ -162,6 +164,16 @@ export interface BootstrapStackProps extends NestedStackProps {
   readonly controlApiCode: Code;
   /** AWS settings for devices whose record has none. */
   readonly defaultAws: DefaultAwsSettings;
+  /**
+   * The Control API for browsers, with identity provider access tokens
+   * ({@link ControlTokenApi}).
+   */
+  readonly controlTokens: {
+    /** The identity provider's issuer, as tokens carry it in `iss`. */
+    readonly issuer: string;
+    /** The origins that may call it from a browser. */
+    readonly allowedOrigins: string[];
+  };
 }
 
 /** The nested stack for the bootstrap service. */
@@ -197,6 +209,9 @@ export class BootstrapStack extends NestedStack {
 
   /** The base URL for Helios's `bootstrap.url`, ending in `/v1`. */
   readonly bootstrapUrl: string;
+
+  /** The Control API for browsers, with access tokens. */
+  readonly controlTokenApi: ControlTokenApi;
 
   constructor(scope: Construct, id: string, props: BootstrapStackProps) {
     super(scope, id, {
@@ -438,6 +453,16 @@ export class BootstrapStack extends NestedStack {
     stream.addResource('destination').addMethod('PUT', control, iam);
 
     this.bootstrapUrl = `${this.api.url}v1`;
+
+    // The same control routes for the console, with access tokens instead of
+    // SigV4. Here, beside the Lambda, so the two nested stacks don't
+    // reference each other.
+    this.controlTokenApi = new ControlTokenApi(this, 'ControlTokenApi', {
+      handler: this.controlApi,
+      issuer: props.controlTokens.issuer,
+      allowedOrigins: props.controlTokens.allowedOrigins,
+      throttle: {rate: THROTTLE_RATE_PER_SECOND, burst: THROTTLE_BURST},
+    });
   }
 
   /**

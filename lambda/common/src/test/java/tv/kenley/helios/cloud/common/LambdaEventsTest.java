@@ -11,6 +11,7 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +47,58 @@ final class LambdaEventsTest {
     assertEquals("203.0.113.7", request.sourceIp());
     assertEquals("request-1", request.requestId());
     assertEquals("arn:aws:sts::123456789012:assumed-role/r/s", request.caller());
+  }
+
+  /** A request whose context has {@code authorizer}, as an HTTP API's JWT authorizer fills it. */
+  private static APIGatewayProxyRequestEvent withAuthorizer(Map<String, Object> authorizer) {
+    APIGatewayProxyRequestEvent.ProxyRequestContext context =
+        new APIGatewayProxyRequestEvent.ProxyRequestContext()
+            .withIdentity(
+                new APIGatewayProxyRequestEvent.RequestIdentity().withSourceIp("203.0.113.7"));
+    context.setAuthorizer(authorizer);
+    return new APIGatewayProxyRequestEvent()
+        .withHttpMethod("GET")
+        .withPath("/v1/control/devices")
+        .withRequestContext(context);
+  }
+
+  @Test
+  void namesTheTokenUserAtTheirSignInProvider() {
+    APIGatewayProxyRequestEvent event =
+        withAuthorizer(
+            Map.of(
+                "claims",
+                Map.of(
+                    "iss", "https://issuer-cognito-idp.example/pool",
+                    "sub", "cognito-sub",
+                    "idp_iss", "https://id.twitch.tv/oauth2",
+                    "idp_sub", "12345"),
+                "scopes",
+                "read"));
+
+    RestJson.Request request = LambdaEvents.request(event, CONTEXT);
+    assertEquals("https://id.twitch.tv/oauth2#12345", request.caller());
+    assertEquals("203.0.113.7", request.sourceIp());
+  }
+
+  @Test
+  void fallsBackToTheTokensOwnIssuerAndSubject() {
+    assertEquals(
+        "https://issuer.example/pool#s-1",
+        LambdaEvents.request(
+                withAuthorizer(
+                    Map.of(
+                        "claims",
+                        Map.of("iss", "https://issuer.example/pool", "sub", "s-1", "idp_iss", ""))),
+                CONTEXT)
+            .caller());
+
+    // No verified claims (a REST route, or a malformed authorizer block): no caller.
+    for (Map<String, Object> authorizer :
+        List.<Map<String, Object>>of(
+            Map.of(), Map.of("claims", "nope"), Map.of("claims", Map.of("iss", "x")))) {
+      assertNull(LambdaEvents.request(withAuthorizer(authorizer), CONTEXT).caller());
+    }
   }
 
   @Test

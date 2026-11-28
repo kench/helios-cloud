@@ -52,6 +52,9 @@ export const HASHED_PREFIX = 'assets/';
 /** How long browsers keep a hashed file. */
 export const HASHED_MAX_AGE = Duration.days(365);
 
+/** The console's development server (`npm run dev`), for sign-in and the API. */
+export const CONSOLE_DEV_ORIGIN = 'http://localhost:5173';
+
 /** CloudFront's limit on a response headers policy's content security policy. */
 export const MAX_CSP_LENGTH = 1783;
 
@@ -184,7 +187,12 @@ export class ConsoleStack extends NestedStack {
 
   /** The console's URL at CloudFront's default domain. */
   get url(): string {
-    return `https://${this.distribution.distributionDomainName}/`;
+    return `${this.origin}/`;
+  }
+
+  /** The console's origin at CloudFront's default domain, for CORS. */
+  get origin(): string {
+    return `https://${this.distribution.distributionDomainName}`;
   }
 }
 

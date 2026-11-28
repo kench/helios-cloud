@@ -43,9 +43,11 @@ describe('HeliosCloudStack', () => {
     }
   });
 
-  it('outputs the console URL', () => {
-    const outputs = synthesize().findOutputs('ConsoleUrl');
-    expect(Object.keys(outputs)).toHaveLength(1);
+  it('outputs the console URL and the Control API for browsers', () => {
+    const template = synthesize();
+    for (const name of ['ConsoleUrl', 'ControlTokenApiUrl']) {
+      expect(Object.keys(template.findOutputs(name))).toHaveLength(1);
+    }
   });
 
   it('has a description', () => {

@@ -58,6 +58,13 @@ function consoleSite() {
   return {site: Source.asset(dir), indexHtml: readFileSync(index, 'utf8')};
 }
 
+/**
+ * The identity provider's issuer (kench/identity-provider, output `Issuer`):
+ * the Control API for browsers accepts its access tokens.
+ */
+const IDENTITY_PROVIDER_ISSUER =
+  'https://issuer-cognito-idp.us-west-2.amazonaws.com/us-west-2_CldV7cnq6';
+
 const app = new App();
 new HeliosCloudStack(app, 'HeliosCloud', {
   env: {account: ACCOUNT, region: REGION},
@@ -65,5 +72,6 @@ new HeliosCloudStack(app, 'HeliosCloud', {
   adminApiCode: lambdaPackage('admin-api'),
   controlApiCode: lambdaPackage('control-api'),
   iotEndpoints: IOT_ENDPOINTS,
+  identityProviderIssuer: IDENTITY_PROVIDER_ISSUER,
   console: consoleSite(),
 });
