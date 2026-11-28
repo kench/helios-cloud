@@ -204,6 +204,12 @@ export class BootstrapStack extends NestedStack {
   /** The control API Lambda. */
   readonly controlApi: Function;
 
+  /**
+   * The control API's log group: its audit log (one `control-audit` line per
+   * call, with the caller), and its errors.
+   */
+  readonly controlAuditLog: LogGroup;
+
   /** The REST API. */
   readonly api: RestApi;
 
@@ -302,6 +308,9 @@ export class BootstrapStack extends NestedStack {
     });
     this.grantAdminApi();
 
+    this.controlAuditLog = new LogGroup(this, 'ControlApiLogs', {
+      retention: RetentionDays.ONE_MONTH,
+    });
     this.controlApi = new Function(this, 'ControlApi', {
       description:
         'Helios control API: devices and their streams (ListDevices, StartStream, ...)',
@@ -313,9 +322,7 @@ export class BootstrapStack extends NestedStack {
       timeout: Duration.seconds(15),
       // Its own log group: the control audit log, with the caller of each
       // call and every destination change.
-      logGroup: new LogGroup(this, 'ControlApiLogs', {
-        retention: RetentionDays.ONE_MONTH,
-      }),
+      logGroup: this.controlAuditLog,
       environment: {
         DEVICES_TABLE: this.devices.tableName,
         SETTINGS_TABLE: this.controlSettings.tableName,
@@ -492,6 +499,19 @@ export class BootstrapStack extends NestedStack {
         this.api.arnForExecuteApi('GET', '/v1/device/egress', BOOTSTRAP_STAGE),
       ],
     });
+  }
+
+  /**
+   * Lets {@code grantee} read the control audit log (its log group only), to
+   * check who changed what. Read-only: no deletes, no other log groups.
+   */
+  grantAuditRead(grantee: IGrantable): Grant {
+    return this.controlAuditLog.grant(
+      grantee,
+      'logs:DescribeLogStreams',
+      'logs:FilterLogEvents',
+      'logs:GetLogEvents',
+    );
   }
 
   /** Lets {@code grantee} call every control route, and nothing else here. */

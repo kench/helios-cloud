@@ -44,8 +44,9 @@ The `HeliosCloud` stack holds one nested stack for each group of resources:
   `resource`), and each route needs a scope: `…/read` for reads, `…/write` for changes (401 for a
   bad token, 403 for a missing scope). CORS allows only the console's origin and
   `http://localhost:5173`. It calls the same Lambda with payload format 1.0, and the audit line
-  names a token's caller as `<idp_iss>#<idp_sub>`. Anyone the identity provider signs in may use it
-  for now.
+  names a token's caller as `<idp_iss>#<idp_sub>`. `helios-provisioning` may read the control API's
+  log group, the audit log (output `ControlAuditLogGroup`; `FilterLogEvents`, `GetLogEvents` and
+  `DescribeLogStreams` on it only). Anyone the identity provider signs in may use it for now.
 - `AptRepository`: the public APT repository the Debian devices (relay and transcoder) install
   Helios from. A private, versioned S3 bucket in the account-regional namespace
   (`helios-apt-<account>-<region>-an`; replaced versions kept 30 days) behind a CloudFront

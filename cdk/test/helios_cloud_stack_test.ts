@@ -46,7 +46,11 @@ describe('HeliosCloudStack', () => {
 
   it('outputs the console URL and the Control API for browsers', () => {
     const template = synthesize();
-    for (const name of ['ConsoleUrl', 'ControlTokenApiUrl']) {
+    for (const name of [
+      'ConsoleUrl',
+      'ControlTokenApiUrl',
+      'ControlAuditLogGroup',
+    ]) {
       expect(Object.keys(template.findOutputs(name))).toHaveLength(1);
     }
   });
